@@ -21,6 +21,7 @@
 #include "system4.h"
 #include "system4/string.h"
 #include "system4/utfsjis.h"
+#include "utfgbk.h"
 #include "vm/heap.h"
 #include "vm/page.h"
 #include "gfx/font.h"
@@ -152,7 +153,7 @@ void CharSpriteManager_Clear(void)
 
 static int extract_sjis_char(char *src, char *dst)
 {
-	if (SJIS_2BYTE(*src)) {
+	if (text_2byte(*src)) {
 		dst[0] = src[0];
 		dst[1] = src[1];
 		dst[2] = '\0';

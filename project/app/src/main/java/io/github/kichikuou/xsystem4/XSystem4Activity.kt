@@ -27,7 +27,17 @@ class XSystem4Activity : SDLActivity() {
     override fun getArguments(): Array<String> {
         val saveFolder = intent.getStringExtra(EXTRA_SAVE_DIR)!!
         val gameRoot = intent.getStringExtra(EXTRA_GAME_ROOT)!!
-        return arrayOf("--save-folder", saveFolder, "--save-format=rsm", gameRoot)
+        val args = mutableListOf("--save-folder", saveFolder, "--save-format=rsm", gameRoot)
+        // Chinese-patched game data (GBK-encoded messages): opt in via a marker
+        // file in the game directory, together with a local CJK font.
+        if (java.io.File(gameRoot, ".text-gbk").exists()) {
+            val font = java.io.File(gameRoot, "font-cn.ttf")
+            if (font.exists()) {
+                args.addAll(arrayOf("--font-gothic", font.path, "--font-mincho", font.path))
+            }
+            args.addAll(arrayOf("--text-code", "gbk", "--no-fnl"))
+        }
+        return args.toTypedArray()
     }
 
     override fun onDestroy() {

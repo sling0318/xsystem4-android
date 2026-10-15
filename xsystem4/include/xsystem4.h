@@ -52,6 +52,8 @@ struct config {
 	bool manual_text_x_scale;
 	enum resume_save_format save_format;
 	int msgskip_delay;
+	bool gbk_text;
+	bool no_fnl;
 };
 
 extern struct config config;

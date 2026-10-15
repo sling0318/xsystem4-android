@@ -19,6 +19,7 @@
 #include "system4/hashtable.h"
 #include "system4/string.h"
 #include "system4/utfsjis.h"
+#include "utfgbk.h"
 
 #include "gfx/gfx.h"
 #include "gfx/font.h"
@@ -81,7 +82,7 @@ void gfx_font_init(void)
 	font_ttf[FONT_GOTHIC] = load_font(FONT_GOTHIC);
 	font_ttf[FONT_MINCHO] = load_font(FONT_MINCHO);
 
-	if (config.fnl_path) {
+	if (config.fnl_path && !config.no_fnl) {
 		struct fnl *fnl = fnl_open(config.fnl_path);
 		if (!fnl)
 			ERROR("Failed to load .fnl font library '%s'", config.fnl_path);
@@ -149,7 +150,10 @@ static uint32_t char_to_code(const char *ch, enum charmap charmap)
 	if (charmap == CHARMAP_SJIS)
 		return sjis_code(ch);
 	int c;
-	sjis_char2unicode(ch, &c);
+	if (config.gbk_text)
+		gbk_char2unicode(ch, &c);
+	else
+		sjis_char2unicode(ch, &c);
 	if (c == '^' && game_rance02_mg)
 		return 0xE9; // é
 	// half-width katakana 'no' (ﾉ)
@@ -182,7 +186,7 @@ float gfx_size_text(struct text_style *ts, const char *text)
 	while (*text) {
 		x += font_size_char(size, char_to_code(text, size->font->charmap));
 		x += edge_advance;
-		text = sjis_skip_char(text);
+		text = text_skip_char(text);
 	}
 	return x * ts->scale_x;;
 }
@@ -209,7 +213,7 @@ float _gfx_render_text(Texture *dst, char *msg, struct text_render_metrics *tm)
 		// get glyph for character
 		float scale_x = *msg == ' ' ? tm->space_scale_x : tm->scale_x;
 		uint32_t code = char_to_code(msg, tm->font_size->font->charmap);
-		msg += SJIS_2BYTE(*msg) ? 2 : 1;
+		msg += text_2byte(*msg) ? 2 : 1;
 		struct glyph *glyph = font_get_glyph(tm->font_size, code, tm->weight);
 		if (!glyph)
 			continue;

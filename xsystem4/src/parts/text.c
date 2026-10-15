@@ -20,13 +20,14 @@
 #include "system4.h"
 #include "system4/string.h"
 #include "system4/utfsjis.h"
+#include "utfgbk.h"
 
 #include "xsystem4.h"
 #include "parts_internal.h"
 
 static int extract_sjis_char(const char *src, char *dst)
 {
-	if (SJIS_2BYTE(*src)) {
+	if (text_2byte(*src)) {
 		dst[0] = src[0];
 		dst[1] = src[1];
 		dst[2] = '\0';

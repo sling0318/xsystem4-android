@@ -410,7 +410,7 @@ void asset_manager_init(void)
 				afa_filenames[ASSET_FLASH] = path_join(config.game_dir, d_name);
 			}
 		} else if (!strcasecmp(ext, "fnl")) {
-			if (!config.fnl_path)
+			if (!config.fnl_path && !config.no_fnl)
 				config.fnl_path = path_join(config.game_dir, d_name);
 		}
 	loop_next:

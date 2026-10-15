@@ -70,6 +70,8 @@ struct config config = {
 	.wai_path = NULL,
 	.ex_path = NULL,
 	.fnl_path = NULL,
+	.gbk_text = false,
+	.no_fnl = false,
 	.font_paths = { NULL, NULL },
 };
 
@@ -378,6 +380,8 @@ static void usage(void)
 	puts("        --font-mincho    Specify the path to the mincho font to use");
 	puts("        --font-gothic    Specify the path to the gothic font to use");
 	puts("        --font-fnl       Specify the path to a .fnl font library to use");
+	puts("        --text-code      Message text charset: sjis (default) or gbk");
+	puts("        --no-fnl         Ignore .fnl font libraries and render all text with TTF fonts");
 	puts("        --font-x-scale   Specify the x scale for text rendering (1.0 = default scale)");
 	puts("    -j, --joypad         Enable joypad");
 	puts("        --msgskip-delay  Specify the delay in ms to add when skipping messages with CTRL");
@@ -411,6 +415,8 @@ enum {
 	LOPT_FONT_FNL,
 	LOPT_FONT_X_SCALE,
 	LOPT_JOYPAD,
+	LOPT_TEXT_CODE,
+	LOPT_NO_FNL,
 	LOPT_MSGSKIP_DELAY,
 	LOPT_SAVE_FOLDER,
 	LOPT_SAVE_FORMAT,
@@ -453,6 +459,8 @@ int main(int argc, char *argv[])
 			{ "font-fnl",      required_argument, 0, LOPT_FONT_FNL },
 			{ "font-x-scale",  required_argument, 0, LOPT_FONT_X_SCALE },
 			{ "joypad",        optional_argument, 0, LOPT_JOYPAD },
+			{ "text-code",     required_argument, 0, LOPT_TEXT_CODE },
+			{ "no-fnl",        no_argument,       0, LOPT_NO_FNL },
 			{ "msgskip-delay", required_argument, 0, LOPT_MSGSKIP_DELAY },
 			{ "save-folder",   required_argument, 0, LOPT_SAVE_FOLDER },
 			{ "save-format",   required_argument, 0, LOPT_SAVE_FORMAT },
@@ -505,6 +513,12 @@ int main(int argc, char *argv[])
 			}
 			break;
 		case 'j':
+		case LOPT_TEXT_CODE:
+			config.gbk_text = !strcmp(optarg, "gbk");
+			break;
+		case LOPT_NO_FNL:
+			config.no_fnl = true;
+			break;
 		case LOPT_JOYPAD:
 			joypad = optarg ? optarg : "on";
 			break;

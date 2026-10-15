@@ -20,6 +20,7 @@
 #include "system4/little_endian.h"
 #include "system4/string.h"
 #include "system4/utfsjis.h"
+#include "utfgbk.h"
 #include "vm/heap.h"
 #include "vm/page.h"
 #include "iarray.h"
@@ -80,7 +81,7 @@ void iarray_write_float(struct iarray_writer *w, float data)
 void iarray_write_string(struct iarray_writer *w, struct string *s)
 {
 	for (char *p = s->text; *p ;p++) {
-		if (SJIS_2BYTE(*p)) {
+		if (text_2byte(*p)) {
 			int c = (uint8_t)p[0] | ((uint8_t)p[1] << 8);
 			iarray_write(w, c);
 			p++;
