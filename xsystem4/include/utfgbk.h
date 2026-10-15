@@ -21,6 +21,9 @@
 /* Decode the first character of src (GBK or ASCII) to a Unicode codepoint. */
 char *gbk_char2unicode(const char *src, int *dst);
 
+/* Unicode codepoint for a GBK double-byte pair, or 0xFFFD if unassigned. */
+int gbk_pair_code(uint8_t lead, uint8_t trail);
+
 /* Charset-aware variants of the SJIS helpers; consult config.gbk_text. */
 bool text_2byte(uint8_t b);
 char *text_skip_char(const char *str);

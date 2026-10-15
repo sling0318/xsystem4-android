@@ -156,45 +156,60 @@ static uint32_t char_to_code(const char *ch, enum charmap charmap)
 	if (config.gbk_text) {
 		// Chinese-patched scripts: the message text is split per-char by
 		// SJIS rules, so GBK chars whose lead byte is in the SJIS halfwidth
-		// range arrive as two separate single-byte strings (each measured
-		// and rendered once). Reassemble the pairs here: the lead half
-		// renders nothing (code 0), the trail half renders the pair glyph.
-		// Only 1-byte strings participate; other text (e.g. the emulator's
-		// injected speedhack overlay) must not disturb the pairing state,
-		// so a run of such calls longer than GBK_PAIR_GAP resets it.
-		static int gbk_phase = 0, gbk_age = 0;
-		static uint8_t gbk_lead = 0;
+		// range arrive as separate single-byte strings (drawn once per
+		// measure/render pass, and re-drawn every animation frame). Other
+		// text (e.g. the emulator's injected speedhack overlay) interleave
+		// here, so instead of relying on call order, reassemble pairs with
+		// a self-synchronizing assembler: a single high byte is stashed,
+		// and the next byte completes the pair when the combination is
+		// valid GBK (each half may also repeat when drawn twice).
+		static uint8_t gbk_pending = 0, gbk_last = 0;
+		static int gbk_state = 0; // 0 idle, 1 lead seen, 2 lead dup seen, 3 trail seen
 		uint8_t b0 = ch[0] & 0xff, b1 = ch[1] & 0xff;
 		if (b1) {
-			if (++gbk_age > 6) { gbk_phase = 0; gbk_age = 0; }
+			gbk_state = 0;
+			gbk_pending = 0;
 			gbk_char2unicode(ch, &c);
 		} else if (b0 >= 0x81) {
-			gbk_age = 0;
-			switch (gbk_phase) {
-			case 0:
-				gbk_lead = b0;
-				gbk_phase = 1;
-				c = 0;
-				break;
+			switch (gbk_state) {
 			case 1:
-				gbk_phase = 2;
+				if (b0 == gbk_pending) {
+					gbk_state = 2;
+					c = 0;
+					break;
+				}
+				c = gbk_pair_code(gbk_pending, b0);
+				if (c != 0xFFFD) {
+					gbk_last = b0;
+					gbk_state = 3;
+				} else {
+					gbk_pending = b0;
+				}
+				break;
+			case 2:
+				c = gbk_pair_code(gbk_pending, b0);
+				gbk_last = b0;
+				gbk_state = 3;
+				break;
+			case 3:
+				if (b0 == gbk_last) {
+					gbk_state = 0;
+					c = 0;
+					break;
+				}
+				gbk_pending = b0;
+				gbk_state = 1;
 				c = 0;
 				break;
-			case 2: {
-				char pair[3] = { gbk_lead, b0, 0 };
-				int u;
-				gbk_char2unicode(pair, &u);
-				gbk_phase = 3;
-				c = u;
-				break;
-			}
 			default:
-				gbk_phase = 0;
-				c = 0xFFFD;
+				gbk_pending = b0;
+				gbk_state = 1;
+				c = 0;
 				break;
 			}
 		} else {
-			if (++gbk_age > 6) { gbk_phase = 0; gbk_age = 0; }
+			gbk_state = 0;
+			gbk_pending = 0;
 			gbk_char2unicode(ch, &c);
 		}
 	} else
