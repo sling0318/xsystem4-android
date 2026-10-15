@@ -21,6 +21,8 @@
 #include "system4/utfsjis.h"
 #include "utfgbk.h"
 
+#include <string.h>
+
 #include "gfx/gfx.h"
 #include "gfx/font.h"
 #include "xsystem4.h"
