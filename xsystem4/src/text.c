@@ -156,9 +156,42 @@ static uint32_t char_to_code(const char *ch, enum charmap charmap)
 	if (charmap == CHARMAP_SJIS)
 		return sjis_code(ch);
 	int c;
-	if (config.gbk_text)
+	if (config.gbk_text) {
+		// Chinese-patched scripts: the message text is split per-char by
+		// SJIS rules, so GBK chars whose lead byte is in the SJIS halfwidth
+		// range arrive as two separate single-byte strings (each measured
+		// and rendered once). Reassemble the pairs here: the lead half
+		// renders nothing (code 0), the trail half renders the pair glyph.
+		static int gbk_phase = 0;
+		static uint8_t gbk_lead = 0;
+		uint8_t b0 = ch[0] & 0xff, b1 = ch[1] & 0xff;
+		if (b1) {
+			gbk_phase = 0;
+		} else if (b0 >= 0x81) {
+			switch (gbk_phase) {
+			case 0:
+				gbk_lead = b0;
+				gbk_phase = 1;
+				return 0;
+			case 1:
+				gbk_phase = 2;
+				return 0;
+			case 2: {
+				char pair[3] = { gbk_lead, b0, 0 };
+				int u;
+				gbk_char2unicode(pair, &u);
+				gbk_phase = 3;
+				return u;
+			}
+			default:
+				gbk_phase = 0;
+				return 0xFFFD;
+			}
+		} else {
+			gbk_phase = 0;
+		}
 		gbk_char2unicode(ch, &c);
-	else
+	} else
 		sjis_char2unicode(ch, &c);
 	if (c == '^' && game_rance02_mg)
 		return 0xE9; // é
