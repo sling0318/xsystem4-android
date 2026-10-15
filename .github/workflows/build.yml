@@ -23,13 +23,13 @@ jobs:
       run: |
         cd project
         "$JAVA_HOME_17_X64/bin/keytool" -genkeypair -keystore keystore.jks \
-          -alias r01 -keyalg RSA -keysize 2048 -validity 10000 \
-          -storepass r01store -keypass r01key -dname "CN=Rance01 Port"
+          -storetype PKCS12 -alias r01 -keyalg RSA -keysize 2048 -validity 10000 \
+          -storepass r01pass -keypass r01pass -dname "CN=Rance01 Port"
         JAVA_HOME=$JAVA_HOME_17_X64 ./gradlew assembleRelease
       env:
         KEY_ALIAS: r01
-        KEY_PASSWORD: r01key
-        KEYSTORE_PASSWORD: r01store
+        KEY_PASSWORD: r01pass
+        KEYSTORE_PASSWORD: r01pass
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v7
