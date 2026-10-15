@@ -195,7 +195,9 @@ static uint32_t char_to_code(const char *ch, enum charmap charmap)
 		sjis_char2unicode(ch, &c);
 	ret = c;
 	static int dbg_count = 0;
-	if (dbg_count < 3000) {
+	static uint8_t dbg_last[8] = {0};
+	if (dbg_count < 3000 && memcmp(dbg_last, ch, 8) != 0) {
+		memcpy(dbg_last, ch, 8);
 		WARNING("ctc[%d]: %02X %02X %02X %02X %02X %02X %02X %02X -> %04X", dbg_count,
 			ch[0] & 0xff, ch[1] & 0xff, ch[2] & 0xff, ch[3] & 0xff,
 			ch[4] & 0xff, ch[5] & 0xff, ch[6] & 0xff, ch[7] & 0xff, ret);
