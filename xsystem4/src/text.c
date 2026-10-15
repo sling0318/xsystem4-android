@@ -159,13 +159,17 @@ static uint32_t char_to_code(const char *ch, enum charmap charmap)
 		// range arrive as two separate single-byte strings (each measured
 		// and rendered once). Reassemble the pairs here: the lead half
 		// renders nothing (code 0), the trail half renders the pair glyph.
-		static int gbk_phase = 0;
+		// Only 1-byte strings participate; other text (e.g. the emulator's
+		// injected speedhack overlay) must not disturb the pairing state,
+		// so a run of such calls longer than GBK_PAIR_GAP resets it.
+		static int gbk_phase = 0, gbk_age = 0;
 		static uint8_t gbk_lead = 0;
 		uint8_t b0 = ch[0] & 0xff, b1 = ch[1] & 0xff;
 		if (b1) {
-			gbk_phase = 0;
+			if (++gbk_age > 6) { gbk_phase = 0; gbk_age = 0; }
 			gbk_char2unicode(ch, &c);
 		} else if (b0 >= 0x81) {
+			gbk_age = 0;
 			switch (gbk_phase) {
 			case 0:
 				gbk_lead = b0;
@@ -190,7 +194,7 @@ static uint32_t char_to_code(const char *ch, enum charmap charmap)
 				break;
 			}
 		} else {
-			gbk_phase = 0;
+			if (++gbk_age > 6) { gbk_phase = 0; gbk_age = 0; }
 			gbk_char2unicode(ch, &c);
 		}
 	} else
