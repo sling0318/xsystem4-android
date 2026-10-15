@@ -147,69 +147,94 @@ static float font_size_char(struct font_size *size, uint32_t code)
 	return size->font->size_char(size, code);
 }
 
-static uint32_t char_to_code(const char *ch, enum charmap charmap)
+// Chinese-patched scripts: the message text is split per-char by SJIS
+// rules, so GBK chars whose lead byte is in the SJIS halfwidth range arrive
+// as separate single-byte strings (drawn once per measure/render pass, and
+// re-drawn every animation frame). Other text (e.g. the emulator's injected
+// speedhack overlay) interleave here, so pairing state is kept per font
+// size (each text stream uses its own) and the assembler self-syncs: a
+// single high byte is stashed and the next byte completes the pair when
+// the combination is valid GBK; each half may repeat when drawn twice.
+struct gbk_pair_state {
+	struct font_size *key;
+	uint8_t pending, last;
+	int state; // 0 idle, 1 lead seen, 2 lead dup seen, 3 trail seen
+};
+static struct gbk_pair_state gbk_states[16];
+static int gbk_rot;
+
+static struct gbk_pair_state *gbk_get_state(struct font_size *key)
+{
+	for (int i = 0; i < 16; i++)
+		if (gbk_states[i].key == key)
+			return &gbk_states[i];
+	for (int i = 0; i < 16; i++) {
+		if (!gbk_states[i].key) {
+			gbk_states[i].key = key;
+			return &gbk_states[i];
+		}
+	}
+	struct gbk_pair_state *st = &gbk_states[gbk_rot];
+	gbk_rot = (gbk_rot + 1) % 16;
+	st->key = key;
+	st->state = 0;
+	st->pending = 0;
+	st->last = 0;
+	return st;
+}
+
+static uint32_t char_to_code_k(struct gbk_pair_state *st, const char *ch, enum charmap charmap)
 {
 	uint32_t ret;
 	if (charmap == CHARMAP_SJIS)
 		return sjis_code(ch);
 	int c;
 	if (config.gbk_text) {
-		// Chinese-patched scripts: the message text is split per-char by
-		// SJIS rules, so GBK chars whose lead byte is in the SJIS halfwidth
-		// range arrive as separate single-byte strings (drawn once per
-		// measure/render pass, and re-drawn every animation frame). Other
-		// text (e.g. the emulator's injected speedhack overlay) interleave
-		// here, so instead of relying on call order, reassemble pairs with
-		// a self-synchronizing assembler: a single high byte is stashed,
-		// and the next byte completes the pair when the combination is
-		// valid GBK (each half may also repeat when drawn twice).
-		static uint8_t gbk_pending = 0, gbk_last = 0;
-		static int gbk_state = 0; // 0 idle, 1 lead seen, 2 lead dup seen, 3 trail seen
 		uint8_t b0 = ch[0] & 0xff, b1 = ch[1] & 0xff;
 		if (b1) {
-			gbk_state = 0;
-			gbk_pending = 0;
+			st->state = 0;
+			st->pending = 0;
 			gbk_char2unicode(ch, &c);
 		} else if (b0 >= 0x81) {
-			switch (gbk_state) {
+			switch (st->state) {
 			case 1:
-				if (b0 == gbk_pending) {
-					gbk_state = 2;
+				if (b0 == st->pending) {
+					st->state = 2;
 					c = 0;
 					break;
 				}
-				c = gbk_pair_code(gbk_pending, b0);
+				c = gbk_pair_code(st->pending, b0);
 				if (c != 0xFFFD) {
-					gbk_last = b0;
-					gbk_state = 3;
+					st->last = b0;
+					st->state = 3;
 				} else {
-					gbk_pending = b0;
+					st->pending = b0;
 				}
 				break;
 			case 2:
-				c = gbk_pair_code(gbk_pending, b0);
-				gbk_last = b0;
-				gbk_state = 3;
+				c = gbk_pair_code(st->pending, b0);
+				st->last = b0;
+				st->state = 3;
 				break;
 			case 3:
-				if (b0 == gbk_last) {
-					gbk_state = 0;
+				if (b0 == st->last) {
+					st->state = 0;
 					c = 0;
 					break;
 				}
-				gbk_pending = b0;
-				gbk_state = 1;
+				st->pending = b0;
+				st->state = 1;
 				c = 0;
 				break;
 			default:
-				gbk_pending = b0;
-				gbk_state = 1;
+				st->pending = b0;
+				st->state = 1;
 				c = 0;
 				break;
 			}
 		} else {
-			gbk_state = 0;
-			gbk_pending = 0;
+			st->state = 0;
+			st->pending = 0;
 			gbk_char2unicode(ch, &c);
 		}
 	} else
@@ -219,9 +244,9 @@ static uint32_t char_to_code(const char *ch, enum charmap charmap)
 	static uint8_t dbg_last[8] = {0};
 	if (dbg_count < 3000 && memcmp(dbg_last, ch, 8) != 0) {
 		memcpy(dbg_last, ch, 8);
-		WARNING("ctc[%d]: %02X %02X %02X %02X %02X %02X %02X %02X -> %04X", dbg_count,
-			ch[0] & 0xff, ch[1] & 0xff, ch[2] & 0xff, ch[3] & 0xff,
-			ch[4] & 0xff, ch[5] & 0xff, ch[6] & 0xff, ch[7] & 0xff, ret);
+		WARNING("ctc[%d] k%d s%d p%02X: %02X %02X -> %04X", dbg_count,
+			(int)(st - gbk_states), st->state, st->pending,
+			ch[0] & 0xff, ch[1] & 0xff, ret);
 		dbg_count++;
 	}
 	if (c == '^' && game_rance02_mg)
@@ -232,10 +257,15 @@ static uint32_t char_to_code(const char *ch, enum charmap charmap)
 	return ret;
 }
 
+static uint32_t char_to_code(const char *ch, enum charmap charmap)
+{
+	return char_to_code_k(NULL, ch, charmap);
+}
+
 float gfx_size_char_unstyled(struct text_style *ts, const char *ch)
 {
 	struct font_size *size = text_style_font_size(ts);
-	return font_size_char(size, char_to_code(ch, size->font->charmap));
+	return font_size_char(size, char_to_code_k(gbk_get_state(size), ch, size->font->charmap));
 }
 
 float gfx_size_char(struct text_style *ts, const char *ch)
@@ -254,7 +284,7 @@ float gfx_size_text(struct text_style *ts, const char *text)
 		: 0.0f;
 	float x = 0.0f;
 	while (*text) {
-		x += font_size_char(size, char_to_code(text, size->font->charmap));
+		x += font_size_char(size, char_to_code_k(gbk_get_state(size), text, size->font->charmap));
 		x += edge_advance;
 		text = text_skip_char(text);
 	}
@@ -282,7 +312,7 @@ float _gfx_render_text(Texture *dst, char *msg, struct text_render_metrics *tm)
 		pos_x += tm->edge_spacing;
 		// get glyph for character
 		float scale_x = *msg == ' ' ? tm->space_scale_x : tm->scale_x;
-		uint32_t code = char_to_code(msg, tm->font_size->font->charmap);
+		uint32_t code = char_to_code_k(gbk_get_state(tm->font_size), msg, tm->font_size->font->charmap);
 		msg += text_2byte(*msg) ? 2 : 1;
 		struct glyph *glyph = font_get_glyph(tm->font_size, code, tm->weight);
 		if (!glyph)
