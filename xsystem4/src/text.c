@@ -183,6 +183,9 @@ static struct gbk_pair_state *gbk_get_state(const void *key)
 	return st;
 }
 
+static int dbg_face_v = -1, dbg_size_v = -1;
+static uintptr_t dbg_dst_v = 0;
+
 static uint32_t char_to_code_k(struct gbk_pair_state *st, const char *ch, enum charmap charmap)
 {
 	uint32_t ret;
@@ -244,9 +247,10 @@ static uint32_t char_to_code_k(struct gbk_pair_state *st, const char *ch, enum c
 	static uint8_t dbg_last[8] = {0};
 	if (dbg_count < 3000 && memcmp(dbg_last, ch, 8) != 0) {
 		memcpy(dbg_last, ch, 8);
-		WARNING("ctc[%d] k%d s%d p%02X: %02X %02X -> %04X", dbg_count,
+		WARNING("ctc[%d] k%d s%d p%02X f%d z%d d%lu: %02X -> %04X", dbg_count,
 			(int)(st - gbk_states), st->state, st->pending,
-			ch[0] & 0xff, ch[1] & 0xff, ret);
+			dbg_face_v, dbg_size_v, (unsigned long)dbg_dst_v & 0xffff,
+			ch[0] & 0xff, ret);
 		dbg_count++;
 	}
 	if (c == '^' && game_rance02_mg)
@@ -265,6 +269,9 @@ static uint32_t char_to_code(const char *ch, enum charmap charmap)
 float gfx_size_char_unstyled(struct text_style *ts, const char *ch)
 {
 	struct font_size *size = text_style_font_size(ts);
+	dbg_face_v = ts->face;
+	dbg_size_v = (int)ts->size;
+	dbg_dst_v = 0;
 	return font_size_char(size, char_to_code_k(gbk_get_state(size), ch, size->font->charmap));
 }
 
@@ -284,6 +291,9 @@ float gfx_size_text(struct text_style *ts, const char *text)
 		: 0.0f;
 	float x = 0.0f;
 	while (*text) {
+		dbg_face_v = ts->face;
+		dbg_size_v = (int)ts->size;
+		dbg_dst_v = 0;
 		x += font_size_char(size, char_to_code_k(gbk_get_state(size), text, size->font->charmap));
 		x += edge_advance;
 		text = text_skip_char(text);
@@ -312,6 +322,9 @@ float _gfx_render_text(Texture *dst, char *msg, struct text_render_metrics *tm)
 		pos_x += tm->edge_spacing;
 		// get glyph for character
 		float scale_x = *msg == ' ' ? tm->space_scale_x : tm->scale_x;
+		dbg_face_v = tm->font_size->font == font_ttf[0] ? 0 : (tm->font_size->font == font_ttf[1] ? 1 : 2);
+		dbg_size_v = (int)tm->font_size->size;
+		dbg_dst_v = (uintptr_t)dst & 0xffff;
 		uint32_t code = char_to_code_k(gbk_get_state(dst), msg, tm->font_size->font->charmap);
 		msg += text_2byte(*msg) ? 2 : 1;
 		struct glyph *glyph = font_get_glyph(tm->font_size, code, tm->weight);
