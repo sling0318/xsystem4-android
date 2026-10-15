@@ -153,6 +153,11 @@ static int NewFont_DrawChar(int sp_no, int c)
 	if (!sp)
 		return 0;
 
+	static int dbg_count = 0;
+	if (dbg_count < 64) {
+		WARNING("DrawChar[%d] = 0x%04X", dbg_count, c & 0xffff);
+		dbg_count++;
+	}
 	NewFont_feed(sp, c, false);
 	return 1;
 }
