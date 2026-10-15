@@ -147,6 +147,12 @@ static float font_size_char(struct font_size *size, uint32_t code)
 
 static uint32_t char_to_code(const char *ch, enum charmap charmap)
 {
+	static int dbg_count = 0;
+	if (dbg_count < 48) {
+		WARNING("char_to_code[%d]: %02X %02X %02X map=%d", dbg_count,
+			ch[0] & 0xff, ch[1] & 0xff, ch[2] & 0xff, (int)charmap);
+		dbg_count++;
+	}
 	if (charmap == CHARMAP_SJIS)
 		return sjis_code(ch);
 	int c;
