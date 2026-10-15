@@ -21,11 +21,54 @@
 #include "sprite.h"
 #include "vm/page.h"
 #include "xsystem4.h"
+#include "utfgbk.h"
 #include "hll.h"
 
 static Point NewFont_cursor = { 0, 0 };
 static struct text_render_metrics NewFont_metrics = {0};
 static struct text_render_metrics NewFont_shadow_metrics = {0};
+
+// The script splits message text into per-char codes using SJIS rules, so a
+// GBK double-byte char can arrive as two separate single-byte codes. The
+// emitted bytes always reproduce the original stream in order, so reassemble
+// lead/trail pairs here before decoding. Draw, shadow and measure each see
+// the code sequence independently and keep their own pending byte.
+static uint8_t NewFont_pending = 0;
+static uint8_t NewFont_shadow_pending = 0;
+static uint8_t NewFont_measure_pending = 0;
+
+static void NewFont_render_char(struct sact_sprite *sp, const char *text, bool shadow)
+{
+	struct texture *t = sprite_get_texture(sp);
+	struct text_render_metrics *m = shadow ? &NewFont_shadow_metrics : &NewFont_metrics;
+	m->x = NewFont_cursor.x;
+	m->y = NewFont_cursor.y;
+	_gfx_render_text(t, text, m);
+}
+
+static void NewFont_feed(struct sact_sprite *sp, int c, bool shadow)
+{
+	if (!config.gbk_text) {
+		char text[3] = { c & 0xff, c >> 8, 0 };
+		NewFont_render_char(sp, text, shadow);
+		return;
+	}
+	uint8_t bytes[2] = { c & 0xff, (c >> 8) & 0xff };
+	int n = bytes[1] ? 2 : 1;
+	uint8_t *pending = shadow ? &NewFont_shadow_pending : &NewFont_pending;
+	for (int i = 0; i < n; i++) {
+		if (*pending) {
+			char text[3] = { *pending, bytes[i], 0 };
+			*pending = 0;
+			NewFont_render_char(sp, text, shadow);
+		} else if (config.gbk_text && bytes[i] >= 0x81) {
+			*pending = bytes[i];
+		} else {
+			char text[2] = { bytes[i], 0 };
+			NewFont_render_char(sp, text, shadow);
+		}
+	}
+}
 
 // XXX: not used
 //static void NewFont_AlphaComposite(int dst_sp, int dst_x, int dst_y, int src_sp, int src_x, int src_y, int w, int h)
@@ -110,11 +153,7 @@ static int NewFont_DrawChar(int sp_no, int c)
 	if (!sp)
 		return 0;
 
-	char text[3] = { c & 0xff, c >> 8, 0 };
-	struct texture *t = sprite_get_texture(sp);
-	NewFont_metrics.x = NewFont_cursor.x;
-	NewFont_metrics.y = NewFont_cursor.y;
-	_gfx_render_text(t, text, &NewFont_metrics);
+	NewFont_feed(sp, c, false);
 	return 1;
 }
 
@@ -124,19 +163,35 @@ static int NewFont_DrawShadowChar(int sp_no, int c)
 	if (!sp)
 		return 0;
 
-	char text[3] = { c & 0xff, c >> 8, 0 };
-	struct texture *t = sprite_get_texture(sp);
-	NewFont_shadow_metrics.x = NewFont_cursor.x;
-	NewFont_shadow_metrics.y = NewFont_cursor.y;
-	_gfx_render_text(t, text, &NewFont_shadow_metrics);
+	NewFont_feed(sp, c, true);
 	return 1;
 }
 
 static int NewFont_MeasureChar(int c1, int c2)
 {
 	struct font_size *size = NewFont_metrics.font_size;
-	//return lround(size->font->size_char_kerning(size, c1, c2));
-	return ceilf(size->font->size_char_kerning(size, c1, c2));
+	if (!config.gbk_text)
+		return ceilf(size->font->size_char_kerning(size, c1, c2));
+
+	// Mirror NewFont_feed's grouping for c2 without touching draw state.
+	int code;
+	uint8_t b0 = c2 & 0xff, b1 = (c2 >> 8) & 0xff;
+	if (NewFont_measure_pending) {
+		char text[3] = { NewFont_measure_pending, b0, 0 };
+		int u;
+		gbk_char2unicode(text, &u);
+		code = u;
+		NewFont_measure_pending = (b1 >= 0x81) ? b1 : 0;
+	} else if (!b1 && b0 >= 0x81) {
+		NewFont_measure_pending = b0;
+		return 0; // advance is charged when the trail byte is measured
+	} else {
+		char text[3] = { b0, b1, 0 };
+		int u;
+		gbk_char2unicode(text, &u);
+		code = u;
+	}
+	return ceilf(size->font->size_char_kerning(size, code, code));
 }
 
 // XXX: not used
