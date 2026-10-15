@@ -147,12 +147,7 @@ static float font_size_char(struct font_size *size, uint32_t code)
 
 static uint32_t char_to_code(const char *ch, enum charmap charmap)
 {
-	static int dbg_count = 0;
-	if (dbg_count < 600) {
-		WARNING("char_to_code[%d]: %02X %02X %02X map=%d", dbg_count,
-			ch[0] & 0xff, ch[1] & 0xff, ch[2] & 0xff, (int)charmap);
-		dbg_count++;
-	}
+	uint32_t ret;
 	if (charmap == CHARMAP_SJIS)
 		return sjis_code(ch);
 	int c;
@@ -167,38 +162,51 @@ static uint32_t char_to_code(const char *ch, enum charmap charmap)
 		uint8_t b0 = ch[0] & 0xff, b1 = ch[1] & 0xff;
 		if (b1) {
 			gbk_phase = 0;
+			gbk_char2unicode(ch, &c);
 		} else if (b0 >= 0x81) {
 			switch (gbk_phase) {
 			case 0:
 				gbk_lead = b0;
 				gbk_phase = 1;
-				return 0;
+				c = 0;
+				break;
 			case 1:
 				gbk_phase = 2;
-				return 0;
+				c = 0;
+				break;
 			case 2: {
 				char pair[3] = { gbk_lead, b0, 0 };
 				int u;
 				gbk_char2unicode(pair, &u);
 				gbk_phase = 3;
-				return u;
+				c = u;
+				break;
 			}
 			default:
 				gbk_phase = 0;
-				return 0xFFFD;
+				c = 0xFFFD;
+				break;
 			}
 		} else {
 			gbk_phase = 0;
+			gbk_char2unicode(ch, &c);
 		}
-		gbk_char2unicode(ch, &c);
 	} else
 		sjis_char2unicode(ch, &c);
+	ret = c;
+	static int dbg_count = 0;
+	if (dbg_count < 3000) {
+		WARNING("ctc[%d]: %02X %02X %02X %02X %02X %02X %02X %02X -> %04X", dbg_count,
+			ch[0] & 0xff, ch[1] & 0xff, ch[2] & 0xff, ch[3] & 0xff,
+			ch[4] & 0xff, ch[5] & 0xff, ch[6] & 0xff, ch[7] & 0xff, ret);
+		dbg_count++;
+	}
 	if (c == '^' && game_rance02_mg)
-		return 0xE9; // é
+		ret = 0xE9; // é
 	// half-width katakana 'no' (ﾉ)
 	if (c == 0xFF89 && game_rance6_mg)
-		return 0xE9; // é
-	return c;
+		ret = 0xE9; // é
+	return ret;
 }
 
 float gfx_size_char_unstyled(struct text_style *ts, const char *ch)
