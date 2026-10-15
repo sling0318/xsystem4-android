@@ -156,14 +156,14 @@ static float font_size_char(struct font_size *size, uint32_t code)
 // single high byte is stashed and the next byte completes the pair when
 // the combination is valid GBK; each half may repeat when drawn twice.
 struct gbk_pair_state {
-	struct font_size *key;
+	const void *key;
 	uint8_t pending, last;
 	int state; // 0 idle, 1 lead seen, 2 lead dup seen, 3 trail seen
 };
 static struct gbk_pair_state gbk_states[16];
 static int gbk_rot;
 
-static struct gbk_pair_state *gbk_get_state(struct font_size *key)
+static struct gbk_pair_state *gbk_get_state(const void *key)
 {
 	for (int i = 0; i < 16; i++)
 		if (gbk_states[i].key == key)
@@ -312,7 +312,7 @@ float _gfx_render_text(Texture *dst, char *msg, struct text_render_metrics *tm)
 		pos_x += tm->edge_spacing;
 		// get glyph for character
 		float scale_x = *msg == ' ' ? tm->space_scale_x : tm->scale_x;
-		uint32_t code = char_to_code_k(gbk_get_state(tm->font_size), msg, tm->font_size->font->charmap);
+		uint32_t code = char_to_code_k(gbk_get_state(dst), msg, tm->font_size->font->charmap);
 		msg += text_2byte(*msg) ? 2 : 1;
 		struct glyph *glyph = font_get_glyph(tm->font_size, code, tm->weight);
 		if (!glyph)
