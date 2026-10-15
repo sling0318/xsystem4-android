@@ -192,8 +192,9 @@ static uint32_t char_to_code_k(struct gbk_pair_state *st, const char *ch, enum c
 	if (config.gbk_text) {
 		uint8_t b0 = ch[0] & 0xff, b1 = ch[1] & 0xff;
 		if (b1) {
-			st->state = 0;
-			st->pending = 0;
+			// multi-byte string: foreign text (e.g. the emulator's injected
+			// overlay walks multi-byte strings) or a whole pair; never
+			// disturb the pending half byte.
 			gbk_char2unicode(ch, &c);
 		} else if (b0 >= 0x81) {
 			switch (st->state) {
@@ -233,8 +234,7 @@ static uint32_t char_to_code_k(struct gbk_pair_state *st, const char *ch, enum c
 				break;
 			}
 		} else {
-			st->state = 0;
-			st->pending = 0;
+			// 1-byte ASCII: decode directly; a pending lead half survives it.
 			gbk_char2unicode(ch, &c);
 		}
 	} else
