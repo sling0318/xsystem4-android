@@ -285,12 +285,12 @@ static void mouse_event(SDL_MouseButtonEvent *e)
 static void synthetic_mouse_event(SDL_MouseButtonEvent *e)
 {
 	if (e->state == SDL_PRESSED) {
-		// Touch outside the viewport is treated as right-click.
+		// A 4:3 game on a wide phone screen leaves letterbox bars that are easy to
+		// hit by accident; upstream turns those into right-clicks, which silently
+		// hides the message box. Only clicks inside the game count.
 		SDL_Point p = { .x = e->x, .y = e->y };
 		if (SDL_PointInRect(&p, &sdl.viewport))
 			key_state[VK_LBUTTON] = true;
-		else
-			key_state[VK_RBUTTON] = true;
 	} else {
 		key_state[VK_LBUTTON] = false;
 		key_state[VK_RBUTTON] = false;
