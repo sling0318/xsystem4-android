@@ -115,7 +115,7 @@ data class Item(val name: String, val path: File, val homedir: File, val savedir
 data class System40Ini(val gameName: String?, val SaveFolder: String?) {
     companion object {
         fun parse(file: File): System40Ini {
-            val regex = Regex("""(\w+)\s*=\s*"(.*)"""")
+            val regex = Regex("""(\w+)\s*=\s*"([^"]*)"""")
             var gameName: String? = null
             var SaveFolder: String? = null
             for (line in file.readLines(Charset.forName("Shift_JIS"))) {
