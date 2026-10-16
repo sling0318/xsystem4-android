@@ -24,7 +24,7 @@ import java.io.IOException
 private const val ICON_SIZE_DP = 40
 private const val INSTALL_REQUEST = 1
 private const val PREFS = "launcher"
-private const val BUNDLED_GAME_ASSET = "Rance01.zip"
+private const val BUNDLED_GAME_ASSET = "Rance02.zip"
 private const val KEY_BUNDLED_INSTALLED = "bundled_game_installed"
 
 private class GameListAdapter(activity: Activity, private val gameList: GameList) : BaseAdapter() {

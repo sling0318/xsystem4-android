@@ -15,7 +15,7 @@ android {
     compileSdkVersion 34
     defaultConfig {
         // 包名单独取，和 namespace 不同：数据目录 /sdcard/Android/data/<applicationId>/...
-        applicationId "com.sling0318.rance01"
+        applicationId "com.sling0318.rance02"
         minSdkVersion 21
         targetSdkVersion 34
         // So that stripReleaseDebugSymbols task works
