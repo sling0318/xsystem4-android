@@ -19,9 +19,13 @@ import android.widget.BaseAdapter
 import android.widget.ImageView
 import android.widget.ListView
 import android.widget.TextView
+import java.io.IOException
 
 private const val ICON_SIZE_DP = 40
 private const val INSTALL_REQUEST = 1
+private const val PREFS = "launcher"
+private const val BUNDLED_GAME_ASSET = "Rance01.zip"
+private const val KEY_BUNDLED_INSTALLED = "bundled_game_installed"
 
 private class GameListAdapter(activity: Activity, private val gameList: GameList) : BaseAdapter() {
     companion object {
@@ -59,6 +63,7 @@ class LauncherActivity : Activity(), GameListObserver {
     private lateinit var gameList: GameList
     private lateinit var adapter: GameListAdapter
     private var progressDialog: Dialog? = null
+    private var installingBundledGame = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -78,6 +83,23 @@ class LauncherActivity : Activity(), GameListObserver {
         listView.setOnItemLongClickListener { _, _, pos, _ ->
             onItemLongClick(listView.adapter.getItem(pos) as Item)
         }
+        renderInstallState(gameList.installState)
+        installBundledGame()
+    }
+
+    // Single-APK builds carry the game inside the package; unpack it the first
+    // time so installing the app is all the player has to do.
+    private fun installBundledGame() {
+        val prefs = getSharedPreferences(PREFS, MODE_PRIVATE)
+        if (prefs.getBoolean(KEY_BUNDLED_INSTALLED, false) || gameList.size > 0)
+            return
+        val input = try {
+            assets.open(BUNDLED_GAME_ASSET)
+        } catch (e: IOException) {
+            return
+        }
+        installingBundledGame = true
+        gameList.install(input)
         renderInstallState(gameList.installState)
     }
 
@@ -143,6 +165,11 @@ class LauncherActivity : Activity(), GameListObserver {
     }
 
     override fun onInstallSuccess() {
+        if (installingBundledGame) {
+            installingBundledGame = false
+            getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                .putBoolean(KEY_BUNDLED_INSTALLED, true).apply()
+        }
         renderInstallState(gameList.installState)
     }
 
