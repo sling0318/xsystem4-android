@@ -147,112 +147,27 @@ static float font_size_char(struct font_size *size, uint32_t code)
 	return size->font->size_char(size, code);
 }
 
-// Chinese-patched scripts: the message text is split per-char by SJIS
-// rules, so GBK chars whose lead byte is in the SJIS halfwidth range arrive
-// as separate single-byte strings (drawn once per measure/render pass, and
-// re-drawn every animation frame). Other text (e.g. the emulator's injected
-// speedhack overlay) interleave here, so pairing state is kept per font
-// size (each text stream uses its own) and the assembler self-syncs: a
-// single high byte is stashed and the next byte completes the pair when
-// the combination is valid GBK; each half may repeat when drawn twice.
-struct gbk_pair_state {
-	const void *key;
-	uint8_t pending, last;
-	int state; // 0 idle, 1 lead seen, 2 lead dup seen, 3 trail seen
-};
-static struct gbk_pair_state gbk_states[16];
-static int gbk_rot;
-
-static struct gbk_pair_state *gbk_get_state(const void *key)
+// Scripts slice message text into per-character strings with S_GETPART, which
+// counts characters using SJIS rules. Under --text-code=gbk that slicing is
+// charset-aware (see vm.c), so a GBK character reaches here as a complete
+// 2-byte string and needs no reassembly.
+static uint32_t char_to_code(const char *ch, enum charmap charmap)
 {
-	for (int i = 0; i < 16; i++)
-		if (gbk_states[i].key == key)
-			return &gbk_states[i];
-	for (int i = 0; i < 16; i++) {
-		if (!gbk_states[i].key) {
-			gbk_states[i].key = key;
-			return &gbk_states[i];
-		}
-	}
-	struct gbk_pair_state *st = &gbk_states[gbk_rot];
-	gbk_rot = (gbk_rot + 1) % 16;
-	st->key = key;
-	st->state = 0;
-	st->pending = 0;
-	st->last = 0;
-	return st;
-}
-
-static int dbg_face_v = -1, dbg_size_v = -1;
-static uintptr_t dbg_dst_v = 0;
-
-static uint32_t char_to_code_k(struct gbk_pair_state *st, const char *ch, enum charmap charmap)
-{
-	uint32_t ret;
 	if (charmap == CHARMAP_SJIS)
 		return sjis_code(ch);
 	int c;
 	if (config.gbk_text) {
-		uint8_t b0 = ch[0] & 0xff, b1 = ch[1] & 0xff;
-		if (b1) {
-			// multi-byte string: foreign text (e.g. the emulator's injected
-			// overlay walks multi-byte strings) or a whole pair; never
-			// disturb the pending half byte.
-			gbk_char2unicode(ch, &c);
-		} else if (b0 >= 0x81) {
-			switch (st->state) {
-			case 1:
-				if (b0 == st->pending) {
-					st->state = 2;
-					c = 0;
-					break;
-				}
-				c = gbk_pair_code(st->pending, b0);
-				if (c != 0xFFFD) {
-					st->last = b0;
-					st->state = 3;
-				} else {
-					st->pending = b0;
-				}
-				break;
-			case 2:
-				c = gbk_pair_code(st->pending, b0);
-				st->last = b0;
-				st->state = 3;
-				break;
-			case 3:
-				if (b0 == st->last) {
-					st->state = 0;
-					c = 0;
-					break;
-				}
-				st->pending = b0;
-				st->state = 1;
-				c = 0;
-				break;
-			default:
-				st->pending = b0;
-				st->state = 1;
-				c = 0;
-				break;
-			}
-		} else {
-			// 1-byte ASCII: decode directly; a pending lead half survives it.
-			gbk_char2unicode(ch, &c);
+		gbk_char2unicode(ch, &c);
+		// A lone GBK half means some slicing site still counts bytes with
+		// SJIS rules; report it instead of silently drawing tofu.
+		static int orphan = 0;
+		if (c == 0xFFFD && orphan < 40) {
+			WARNING("unpaired GBK byte %02X in text", ch[0] & 0xff);
+			orphan++;
 		}
 	} else
 		sjis_char2unicode(ch, &c);
-	ret = c;
-	static int dbg_count = 0;
-	static uint8_t dbg_last[8] = {0};
-	if (dbg_count < 3000 && memcmp(dbg_last, ch, 8) != 0) {
-		memcpy(dbg_last, ch, 8);
-		WARNING("ctc[%d] k%d s%d p%02X f%d z%d d%lu: %02X -> %04X", dbg_count,
-			(int)(st - gbk_states), st->state, st->pending,
-			dbg_face_v, dbg_size_v, (unsigned long)dbg_dst_v & 0xffff,
-			ch[0] & 0xff, ret);
-		dbg_count++;
-	}
+	uint32_t ret = c;
 	if (c == '^' && game_rance02_mg)
 		ret = 0xE9; // é
 	// half-width katakana 'no' (ﾉ)
@@ -261,18 +176,12 @@ static uint32_t char_to_code_k(struct gbk_pair_state *st, const char *ch, enum c
 	return ret;
 }
 
-static uint32_t char_to_code(const char *ch, enum charmap charmap)
-{
-	return char_to_code_k(NULL, ch, charmap);
-}
-
 float gfx_size_char_unstyled(struct text_style *ts, const char *ch)
 {
+	if (!*ch)
+		return 0.f;
 	struct font_size *size = text_style_font_size(ts);
-	dbg_face_v = ts->face;
-	dbg_size_v = (int)ts->size;
-	dbg_dst_v = 0;
-	return font_size_char(size, char_to_code_k(gbk_get_state(size), ch, size->font->charmap));
+	return font_size_char(size, char_to_code(ch, size->font->charmap));
 }
 
 float gfx_size_char(struct text_style *ts, const char *ch)
@@ -291,14 +200,11 @@ float gfx_size_text(struct text_style *ts, const char *text)
 		: 0.0f;
 	float x = 0.0f;
 	while (*text) {
-		dbg_face_v = ts->face;
-		dbg_size_v = (int)ts->size;
-		dbg_dst_v = 0;
-		x += font_size_char(size, char_to_code_k(gbk_get_state(size), text, size->font->charmap));
+		x += font_size_char(size, char_to_code(text, size->font->charmap));
 		x += edge_advance;
 		text = text_skip_char(text);
 	}
-	return x * ts->scale_x;;
+	return x * ts->scale_x;
 }
 
 float gfx_get_actual_font_size(unsigned face, float size)
@@ -322,10 +228,7 @@ float _gfx_render_text(Texture *dst, char *msg, struct text_render_metrics *tm)
 		pos_x += tm->edge_spacing;
 		// get glyph for character
 		float scale_x = *msg == ' ' ? tm->space_scale_x : tm->scale_x;
-		dbg_face_v = tm->font_size->font == font_ttf[0] ? 0 : (tm->font_size->font == font_ttf[1] ? 1 : 2);
-		dbg_size_v = (int)tm->font_size->size;
-		dbg_dst_v = (uintptr_t)dst & 0xffff;
-		uint32_t code = char_to_code_k(gbk_get_state(dst), msg, tm->font_size->font->charmap);
+		uint32_t code = char_to_code(msg, tm->font_size->font->charmap);
 		msg += text_2byte(*msg) ? 2 : 1;
 		struct glyph *glyph = font_get_glyph(tm->font_size, code, tm->weight);
 		if (!glyph)

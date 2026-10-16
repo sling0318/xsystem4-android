@@ -9,6 +9,7 @@
  */
 
 #include "xsystem4.h"
+#include "system4/string.h"
 #include "utfgbk.h"
 
 /* Generated table: GBK double-byte code (lead 0x81-0xFE, trail 0x40-0xFE)
@@ -172,4 +173,35 @@ bool text_2byte(uint8_t b)
 char *text_skip_char(const char *str)
 {
 	return (char *)(str + (text_2byte(*str) ? 2 : 1));
+}
+
+// Byte offset of character number `index`, counting GBK pairs as one character.
+// Mirrors sjis_index(); scripts slice message text with character indices, so a
+// SJIS-only rule there would hand the renderer one half of a GBK pair at a time.
+int text_index(const char *_src, int index)
+{
+	const uint8_t *src = (const uint8_t*)_src;
+	int i, c;
+	for (i = 0, c = 0; c < index && src[i]; i++, c++) {
+		if (text_2byte(src[i])) {
+			i++;
+			if (!src[i])
+				return -1;
+		}
+	}
+	return src[i] ? i : -1;
+}
+
+// string_copy() with charset-aware indexing.
+struct string *text_string_copy(const struct string *s, int index, int len)
+{
+	if (index < 0)
+		index = 0;
+	if (len <= 0)
+		return make_string("", 0);
+	if ((index = text_index(s->text, index)) < 0)
+		return make_string("", 0);
+	if ((len = text_index(s->text + index, len)) < 0)
+		len = s->size - index;
+	return make_string(s->text + index, len);
 }

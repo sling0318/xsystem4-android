@@ -31,6 +31,7 @@
 #include "system4/little_endian.h"
 #include "system4/string.h"
 #include "system4/utfsjis.h"
+#include "utfgbk.h"
 
 #include "debugger.h"
 #include "input.h"
@@ -1615,7 +1616,9 @@ static enum opcode execute_instruction(enum opcode opcode)
 	case S_GETPART: {
 		int len = stack_pop().i; // length
 		int i = stack_pop().i; // index
-		struct string *s = string_copy(stack_peek_string(0), i, len);
+		struct string *src = stack_peek_string(0);
+		struct string *s = config.gbk_text ? text_string_copy(src, i, len)
+			: string_copy(src, i, len);
 		heap_unref(stack_pop().i);
 		stack_push_string(s);
 		break;

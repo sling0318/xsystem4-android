@@ -28,4 +28,9 @@ int gbk_pair_code(uint8_t lead, uint8_t trail);
 bool text_2byte(uint8_t b);
 char *text_skip_char(const char *str);
 
+/* Byte offset of character `index` in a charset-aware string, or -1. */
+struct string;
+int text_index(const char *src, int index);
+struct string *text_string_copy(const struct string *s, int index, int len);
+
 #endif
