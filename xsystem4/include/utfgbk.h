@@ -33,4 +33,10 @@ struct string;
 int text_index(const char *src, int index);
 struct string *text_string_copy(const struct string *s, int index, int len);
 
+/* Character count, GBK pairs counting as one. Mirrors sjis_count_char(). */
+int text_count_char(const char *src);
+
+/* string_get_char() with charset-aware indexing. */
+int text_get_char(const struct string *str, int i);
+
 #endif

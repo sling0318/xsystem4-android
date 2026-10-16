@@ -1586,12 +1586,12 @@ static enum opcode execute_instruction(enum opcode opcode)
 	}
 	case S_LENGTH: {
 		int str = stack_pop_var()->i;
-		stack_push(sjis_count_char(heap_get_string(str)->text));
+		stack_push(text_count_char(heap_get_string(str)->text));
 		break;
 	}
 	case S_LENGTH2: {
 		int str = stack_pop().i;
-		stack_push(sjis_count_char(heap_get_string(str)->text));
+		stack_push(text_count_char(heap_get_string(str)->text));
 		heap_unref(str);
 		break;
 	}
@@ -1682,7 +1682,7 @@ static enum opcode execute_instruction(enum opcode opcode)
 	case C_REF: {
 		int i = stack_pop().i;
 		int str = stack_pop().i;
-		int32_t ch = string_get_char(heap_get_string(str), i);
+		int32_t ch = text_get_char(heap_get_string(str), i);
 		// 'é' for EN Rance Quest
 		if (game_rance8_mg && ch == -91)
 			stack_push(165);

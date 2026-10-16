@@ -205,3 +205,38 @@ struct string *text_string_copy(const struct string *s, int index, int len)
 		len = s->size - index;
 	return make_string(s->text + index, len);
 }
+
+// Character count with charset-aware indexing. Scripts size their own text
+// layout by strlen(), so this has to agree with text_string_copy(): counting a
+// GBK pair as two SJIS characters makes the script emit twice as many advance
+// steps as there are glyphs, and the line collapses onto itself.
+int text_count_char(const char *_src)
+{
+	const uint8_t *src = (const uint8_t*)_src;
+	int c = 0;
+
+	while (*src) {
+		if (text_2byte(*src))
+			src++;
+		c++;
+		src++;
+	}
+	return c;
+}
+
+// A GBK character must yield its 16-bit code here. Scripts test `ch > 255` to
+// tell full-width from half-width; a lone GBK lead byte is only 0x81-0xFE, and
+// char is signed on ARM, so it comes back negative and every Chinese glyph gets
+// laid out at half width.
+int text_get_char(const struct string *str, int i)
+{
+	// Comparing with the byte length is weird but this is how System4.0 works.
+	if (i < 0 || i > str->size)
+		ERROR("String index out of bounds");
+	if ((i = text_index(str->text, i)) < 0)
+		return 0;
+
+	if (text_2byte(str->text[i]))
+		return (uint8_t)str->text[i] | ((uint8_t)str->text[i + 1] << 8);
+	return str->text[i];
+}
