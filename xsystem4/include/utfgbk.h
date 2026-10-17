@@ -39,4 +39,8 @@ int text_count_char(const char *src);
 /* string_get_char() with charset-aware indexing. */
 int text_get_char(const struct string *str, int i);
 
+/* UTF-8 conversion, GBK-aware (for dialogs the game itself raises). */
+char *gbk2utf(const char *src, size_t len);
+char *text2utf(const char *src, size_t len);
+
 #endif

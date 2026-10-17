@@ -683,7 +683,7 @@ static void system_call(enum syscall_code code)
 	}
 	case SYS_MSGBOX: {
 		struct string *str = stack_peek_string(0);
-		char *utf = sjis2utf(str->text, str->size);
+		char *utf = text2utf(str->text, str->size);
 		SDL_ShowSimpleMessageBox(0, "xsystem4", utf, NULL);
 		free(utf);
 		// XXX: caller S_POPs
@@ -775,7 +775,7 @@ static void system_call(enum syscall_code code)
 	case SYS_ERROR: {// system.Error(string szText)
 		int result = 0;
 		struct string *str = stack_peek_string(0);
-		char *utf = sjis2utf(str->text, str->size);
+		char *utf = text2utf(str->text, str->size);
 		sys_warning("*GAME ERROR*: %s\n", utf);
 		const SDL_MessageBoxData mbox = {
 			SDL_MESSAGEBOX_ERROR,

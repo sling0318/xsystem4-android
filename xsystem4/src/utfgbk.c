@@ -241,3 +241,34 @@ int text_get_char(const struct string *str, int i)
 		return (uint8_t)str->text[i] | ((uint8_t)str->text[i + 1] << 8);
 	return str->text[i];
 }
+
+char *gbk2utf(const char *_src, size_t len)
+{
+	if (!len)
+		len = strlen(_src);
+	const uint8_t *src = (const uint8_t*)_src;
+	uint8_t *dst = xmalloc(len * 3 + 1);
+	uint8_t *p = dst;
+
+	while (*src) {
+		int c;
+		src = (const uint8_t*)gbk_char2unicode((const char*)src, &c);
+		if (c <= 0x7f) {
+			*p++ = c;
+		} else if (c <= 0x7ff) {
+			*p++ = 0xc0 | (c >> 6);
+			*p++ = 0x80 | (c & 0x3f);
+		} else {
+			*p++ = 0xe0 | (c >> 12);
+			*p++ = 0x80 | ((c >> 6) & 0x3f);
+			*p++ = 0x80 | (c & 0x3f);
+		}
+	}
+	*p = '\0';
+	return (char*)dst;
+}
+
+char *text2utf(const char *src, size_t len)
+{
+	return config.gbk_text ? gbk2utf(src, len) : sjis2utf(src, len);
+}
