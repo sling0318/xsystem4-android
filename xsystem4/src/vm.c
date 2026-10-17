@@ -17,6 +17,7 @@
 #define VM_PRIVATE
 
 #include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
 #include <math.h>
 #include <time.h>
@@ -73,6 +74,27 @@ struct ain *ain;
 size_t instr_ptr = 0;
 
 bool vm_reset_once = false;
+
+/*
+ * --trace-vm answers "which scene function is the script stuck in" when the VM
+ * is clearly running but nothing changes on screen. Scenario names carry raw
+ * SJIS/GBK bytes, which logcat mangles beyond recovery, so non-ASCII is escaped
+ * as \xNN and decoded offline.
+ */
+static const char *vm_trace_name(int fno, char *dst, size_t size)
+{
+	const unsigned char *s = (const unsigned char*)ain->functions[fno].name;
+	size_t j = 0;
+	for (; *s && j + 5 < size; s++) {
+		if (*s >= 0x20 && *s < 0x7f) {
+			dst[j++] = *s;
+		} else {
+			j += snprintf(dst + j, size - j, "\\x%02x", *s);
+		}
+	}
+	dst[j] = '\0';
+	return dst;
+}
 
 // Read the opcode at ADDR.
 static int16_t get_opcode(size_t addr)
@@ -360,6 +382,10 @@ static void scenario_call(int slot)
 	};
 	call_stack_ptr = 1;
 	instr_ptr = ain->functions[fno].address;
+	if (config.trace_vm) {
+		char name[192];
+		WARNING("VM SCENE fno=%d %s", fno, vm_trace_name(fno, name, sizeof(name)));
+	}
 }
 
 /*
@@ -2377,8 +2403,16 @@ static enum opcode execute_instruction(enum opcode opcode)
 
 static void vm_execute(void)
 {
+	static unsigned long traced = 0;
 	for (;;) {
 		uint16_t opcode;
+		if (config.trace_vm && (++traced % 100000) == 0) {
+			char name[192];
+			int fno = call_stack_ptr > 0 ? call_stack[call_stack_ptr-1].fno : -1;
+			WARNING("VM TICK n=%lu ip=0x%08lX depth=%d fn=%s", traced,
+				(unsigned long)instr_ptr, call_stack_ptr,
+				fno >= 0 ? vm_trace_name(fno, name, sizeof(name)) : "<none>");
+		}
 		if (instr_ptr == VM_RETURN)
 			return;
 		if (unlikely(instr_ptr >= ain->code_size)) {

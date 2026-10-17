@@ -65,6 +65,15 @@ static void SystemService_GetGameName(struct string **game_name)
 	*game_name = cstr_to_string(config.game_name);
 }
 
+/*
+ * System 4.3 splits the code name above from the title shown in the window
+ * caption; our ini only carries one of them (GameName), so both answer with it.
+ */
+static void SystemService_GetGameTitle(struct string **game_title)
+{
+	SystemService_GetGameName(game_title);
+}
+
 HLL_WARN_UNIMPLEMENTED(false, bool, SystemService, AddURLMenu, struct string *title, struct string *url);
 
 static bool SystemService_IsFullScreen(void)
@@ -435,6 +444,7 @@ HLL_LIBRARY(SystemService,
 	    HLL_EXPORT(SetMixerMute, mixer_set_mute),
 	    HLL_EXPORT(GetGameVersion, SystemService_GetGameVersion),
 	    HLL_EXPORT(GetGameName, SystemService_GetGameName),
+	    HLL_EXPORT(GetGameTitle, SystemService_GetGameTitle),
 	    HLL_EXPORT(AddURLMenu, SystemService_AddURLMenu),
 	    HLL_EXPORT(IsFullScreen, SystemService_IsFullScreen),
 	    HLL_EXPORT(ChangeNormalScreen, SystemService_ChangeNormalScreen),

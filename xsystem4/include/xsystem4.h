@@ -55,6 +55,7 @@ struct config {
 	bool gbk_text;
 	bool no_fnl;
 	bool stub_unimplemented_hll;
+	bool trace_vm;
 };
 
 extern struct config config;

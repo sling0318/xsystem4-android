@@ -42,6 +42,9 @@ class XSystem4Activity : SDLActivity() {
         if (java.io.File(gameRoot, ".hll-stub").exists()) {
             args.add("--stub-hll")
         }
+        if (java.io.File(gameRoot, ".vm-trace").exists()) {
+            args.add("--trace-vm")
+        }
         return args.toTypedArray()
     }
 
