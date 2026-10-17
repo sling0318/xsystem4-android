@@ -96,9 +96,6 @@ let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{
 })")
 xcrun simctl boot "$udid" || true
 xcrun simctl bootstatus "$udid" -b
-# The app is landscape-only; without this the simulator stays portrait and the
-# screenshot comes back rotated 90 degrees.  simctl wants the camelCase name.
-xcrun simctl io "$udid" setorientation landscapeLeft || echo "setorientation failed"
 xcrun simctl install "$udid" "$app"
 echo "udid=$udid"
 echo "::endgroup::"
