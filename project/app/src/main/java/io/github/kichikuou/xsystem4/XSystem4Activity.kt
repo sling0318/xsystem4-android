@@ -37,6 +37,11 @@ class XSystem4Activity : SDLActivity() {
             }
             args.addAll(arrayOf("--text-code", "gbk", "--no-fnl"))
         }
+        // Games that import HLL functions this engine only has stubs for: keep running
+        // with those calls returning zero instead of aborting (see --stub-hll).
+        if (java.io.File(gameRoot, ".hll-stub").exists()) {
+            args.add("--stub-hll")
+        }
         return args.toTypedArray()
     }
 

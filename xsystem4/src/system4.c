@@ -72,6 +72,7 @@ struct config config = {
 	.fnl_path = NULL,
 	.gbk_text = false,
 	.no_fnl = false,
+	.stub_unimplemented_hll = false,
 	.font_paths = { NULL, NULL },
 };
 
@@ -382,6 +383,7 @@ static void usage(void)
 	puts("        --font-fnl       Specify the path to a .fnl font library to use");
 	puts("        --text-code      Message text charset: sjis (default) or gbk");
 	puts("        --no-fnl         Ignore .fnl font libraries and render all text with TTF fonts");
+	puts("        --stub-hll       Return zero from unimplemented HLL functions instead of aborting");
 	puts("        --font-x-scale   Specify the x scale for text rendering (1.0 = default scale)");
 	puts("    -j, --joypad         Enable joypad");
 	puts("        --msgskip-delay  Specify the delay in ms to add when skipping messages with CTRL");
@@ -417,6 +419,7 @@ enum {
 	LOPT_JOYPAD,
 	LOPT_TEXT_CODE,
 	LOPT_NO_FNL,
+	LOPT_STUB_HLL,
 	LOPT_MSGSKIP_DELAY,
 	LOPT_SAVE_FOLDER,
 	LOPT_SAVE_FORMAT,
@@ -461,6 +464,7 @@ int main(int argc, char *argv[])
 			{ "joypad",        optional_argument, 0, LOPT_JOYPAD },
 			{ "text-code",     required_argument, 0, LOPT_TEXT_CODE },
 			{ "no-fnl",        no_argument,       0, LOPT_NO_FNL },
+			{ "stub-hll",      no_argument,       0, LOPT_STUB_HLL },
 			{ "msgskip-delay", required_argument, 0, LOPT_MSGSKIP_DELAY },
 			{ "save-folder",   required_argument, 0, LOPT_SAVE_FOLDER },
 			{ "save-format",   required_argument, 0, LOPT_SAVE_FORMAT },
@@ -513,11 +517,16 @@ int main(int argc, char *argv[])
 			}
 			break;
 		case 'j':
+			joypad = optarg ? optarg : "on";
+			break;
 		case LOPT_TEXT_CODE:
 			config.gbk_text = !strcmp(optarg, "gbk");
 			break;
 		case LOPT_NO_FNL:
 			config.no_fnl = true;
+			break;
+		case LOPT_STUB_HLL:
+			config.stub_unimplemented_hll = true;
 			break;
 		case LOPT_JOYPAD:
 			joypad = optarg ? optarg : "on";

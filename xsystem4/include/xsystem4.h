@@ -54,6 +54,7 @@ struct config {
 	int msgskip_delay;
 	bool gbk_text;
 	bool no_fnl;
+	bool stub_unimplemented_hll;
 };
 
 extern struct config config;

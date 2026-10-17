@@ -20,6 +20,7 @@
 #include <string.h>
 #include <ffi.h>
 #include "system4/ain.h"
+#include "system4/string.h"
 #include "system4/utfsjis.h"
 #include "vm.h"
 #include "vm/heap.h"
@@ -34,6 +35,7 @@ struct hll_function {
 	unsigned int nr_args;
 	ffi_type **args;
 	ffi_type *return_type;
+	bool warned; // already reported for --stub-hll
 };
 
 static struct hll_function **libraries = NULL;
@@ -296,11 +298,9 @@ void hll_call(int libno, int fno)
 {
 	struct ain_hll_function *f = &ain->libraries[libno].functions[fno];
 
-	if (!libraries[libno])
-		VM_ERROR("Unimplemented HLL function: %s.%s", ain->libraries[libno].name, f->name);
-
-	struct hll_function *fun = &libraries[libno][fno];
-	if (!fun->fun)
+	struct hll_function *fun = libraries[libno] ? &libraries[libno][fno] : NULL;
+	bool stubbed = !fun || !fun->fun;
+	if (stubbed && !config.stub_unimplemented_hll)
 		VM_ERROR("Unimplemented HLL function: %s.%s", ain->libraries[libno].name, f->name);
 
 	void *args[HLL_MAX_ARGS];
@@ -355,12 +355,22 @@ void hll_call(int libno, int fno)
 		}
 	}
 
-	union vm_value r;
+	union vm_value r = { .i = 0 };
 #ifdef TRACE_HLL
-	trace_hll_call(&ain->libraries[libno], f, fun, &r, args);
+	if (!stubbed)
+		trace_hll_call(&ain->libraries[libno], f, fun, &r, args);
 #else
-	ffi_call(&fun->cif, (void*)fun->fun, &r, args);
+	if (!stubbed)
+		ffi_call(&fun->cif, (void*)fun->fun, &r, args);
 #endif
+	if (stubbed) {
+		if (fun && !fun->warned) {
+			fun->warned = true;
+			WARNING("STUBBED HLL function: %s.%s", ain->libraries[libno].name, f->name);
+		}
+		if (f->return_type.data == AIN_STRING)
+			r.ref = string_alloc(0);
+	}
 
 
 	for (int i = 0, j = 0; i < f->nr_arguments; i++, j++) {
@@ -760,8 +770,14 @@ static void link_libraries(void)
 				break;
 			}
 		}
-		if (!libraries[i])
+		if (!libraries[i]) {
 			WARNING("Unimplemented library: %s", ain->libraries[i].name);
+			if (config.stub_unimplemented_hll) {
+				// Every entry keeps .fun == NULL, so calls fall into the
+				// --stub-hll path in hll_call() instead of aborting.
+				libraries[i] = xcalloc(ain->libraries[i].nr_functions, sizeof(struct hll_function));
+			}
+		}
 	}
 }
 
