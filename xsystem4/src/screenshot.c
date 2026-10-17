@@ -98,7 +98,7 @@ void screenshot_save(void)
 }
 
 #else
-#ifdef __ANDROID__
+#if defined(__ANDROID__) || defined(XSYS4_IOS)
 
 void screenshot_save(void)
 {

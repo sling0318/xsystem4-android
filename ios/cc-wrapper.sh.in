@@ -1,0 +1,5 @@
+#!/bin/sh
+# Compiler wrapper for autotools builds that need iOS target flags.
+# Passing "-target ... -isysroot ..." through CC=/CFLAGS= is unreliable here
+# (the quoting survives into configure's argv), so keep it in a script instead.
+exec @IOS_CLANG@ @IOS_TARGET_CFLAGS@ "$@"

@@ -171,7 +171,7 @@ bool keyboard_focus = true;
 #define MAX_CONTROLLERS 4
 static SDL_GameController *controllers[MAX_CONTROLLERS];
 
-#ifdef __ANDROID__
+#if defined(__ANDROID__) || defined(XSYS4_IOS)
 struct deferred_keyevent {
 	STAILQ_ENTRY(deferred_keyevent) entry;
 	SDL_Event e;
@@ -571,7 +571,7 @@ static void fire_deferred_events(void)
 		key_state[VK_CONTROL] = true;
 	}
 
-#ifdef __ANDROID__
+#if defined(__ANDROID__) || defined(XSYS4_IOS)
 	// Fire the deferred keyboard and text input events.
 	while (!STAILQ_EMPTY(&deferred_keyevent_queue) && now >= last_keyevent_timestamp + DEFERRED_KEY_DELAY) {
 		struct deferred_keyevent *ev = STAILQ_FIRST(&deferred_keyevent_queue);
@@ -660,7 +660,7 @@ void handle_events(void)
 			}
 			// fallthrough
 		case SDL_KEYUP:
-#ifdef __ANDROID__
+#if defined(__ANDROID__) || defined(XSYS4_IOS)
 			if (input_handler && e.key.timestamp < last_keyevent_timestamp + DEFERRED_KEY_DELAY) {
 				// Input from virtual keyboard is sent as consecutive
 				// SDL_KEYDOWN and SDL_KEYUP events. To give the game a chance
@@ -744,7 +744,7 @@ void handle_events(void)
 		case SDL_TEXTINPUT:
 			if (!input_handler) {
 				break;
-#ifdef __ANDROID__
+#if defined(__ANDROID__) || defined(XSYS4_IOS)
 			} else if (!STAILQ_EMPTY(&deferred_keyevent_queue)) {
 				// The order of key events and text events must be preserved.
 				struct deferred_keyevent *ev = xmalloc(sizeof(struct deferred_keyevent));

@@ -21,6 +21,13 @@ include(ExternalProject)
 
 set(stagingDir ${CMAKE_CURRENT_BINARY_DIR}/stage)
 
+# Autotools packages need the iOS target flags without relying on how the
+# generator quotes CC=..., so hand them a compiler wrapper script.
+configure_file(${CMAKE_CURRENT_LIST_DIR}/cc-wrapper.sh.in
+  ${CMAKE_CURRENT_BINARY_DIR}/ios-cc.sh @ONLY)
+file(CHMOD FILES ${CMAKE_CURRENT_BINARY_DIR}/ios-cc.sh
+  PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
+
 set(COMMON_CMAKE_ARGS
   -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
   -DCMAKE_TOOLCHAIN_FILE=${CMAKE_CURRENT_LIST_DIR}/toolchain.cmake
@@ -126,10 +133,7 @@ ExternalProject_Add(
   libffi
   URL https://github.com/libffi/libffi/releases/download/v3.4.6/libffi-3.4.6.tar.gz
   CONFIGURE_COMMAND ${CMAKE_COMMAND} -E env
-    CC="${IOS_TARGET_CC}"
-    CXX="${IOS_TARGET_CC}++"
-    CPPFLAGS="-I${stagingDir}/include"
-    LDFLAGS="${IOS_TARGET_CFLAGS}"
+    CC=${CMAKE_CURRENT_BINARY_DIR}/ios-cc.sh
     AR=${CMAKE_AR}
     RANLIB=${CMAKE_RANLIB}
     STRIP=${CMAKE_STRIP}

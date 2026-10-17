@@ -43,6 +43,7 @@ if(IOS)
   # The SDK provides <OpenGLES/ES3/gl.h>, not the Khronos <GLES3/gl3.h>.
   target_include_directories(xsystem4 PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/../ios/shim)
+  target_compile_definitions(xsystem4 PRIVATE XSYS4_IOS=1)
 endif()
 
 execute_process(
