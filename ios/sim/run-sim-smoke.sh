@@ -94,20 +94,27 @@ xcrun simctl install "$udid" "$app"
 echo "udid=$udid"
 echo "::endgroup::"
 
-( sleep 4; xcrun simctl io "$udid" screenshot "$build/smoke.png" ) &
-screenshot=$!
-
 echo "::group::Run smoke app"
-set +e
-xcrun simctl launch --console-pty "$udid" "$bundle" 2>&1 | tee "$build/smoke.log"
-launch_status=${PIPESTATUS[0]}
-set -e
-wait $screenshot || echo "screenshot failed"
-echo "launch exit=$launch_status"
+# --console-pty attaches and does not return after the app exits on these
+# runners, so redirect the app's stdio to files instead and poll them.
+xcrun simctl launch --stdout "$build/smoke.log" --stderr "$build/smoke.err" \
+  "$udid" "$bundle"
+sleep 5
+xcrun simctl io "$udid" screenshot "$build/smoke.png" || echo "screenshot failed"
+
+status=timeout
+for _ in $(seq 1 45); do
+  if grep -q "SMOKE: OK" "$build/smoke.log" 2>/dev/null; then status=ok; break; fi
+  if grep -q "SMOKE: FAIL" "$build/smoke.log" 2>/dev/null; then status=fail; break; fi
+  sleep 2
+done
+cat "$build/smoke.log" 2>/dev/null || true
+echo "stderr:"; cat "$build/smoke.err" 2>/dev/null || true
+echo "result=$status"
 echo "::endgroup::"
 
 xcrun simctl terminate "$udid" "$bundle" 2>/dev/null || true
-xcrun simctl shutdown "$udid" || true
+xcrun simctl shutdown "$udid" 2>/dev/null || true
 
-grep -q "SMOKE: OK" "$build/smoke.log"
+[ "$status" = "ok" ]
 echo "simulator smoke test OK"
