@@ -315,7 +315,7 @@ int SDL_main(int argc, char *argv[])
 	test_audio();
 
 	int events = 0;
-	Uint64 until = SDL_GetTicks64() + 4000;
+	Uint64 until = SDL_GetTicks64() + 9000;
 	while (SDL_GetTicks64() < until) {
 		SDL_Event e;
 		while (SDL_PollEvent(&e))
@@ -323,7 +323,7 @@ int SDL_main(int argc, char *argv[])
 		SDL_GL_SwapWindow(window);
 		SDL_Delay(16);
 	}
-	printf(TAG "pumped %d events in 4s\n", events);
+	printf(TAG "pumped %d events\n", events);
 
 	if (failures == 0)
 		printf(TAG "OK\n");

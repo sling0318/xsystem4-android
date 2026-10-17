@@ -43,7 +43,7 @@ done
 frameworks=""
 for f in UIKit Foundation CoreGraphics QuartzCore OpenGLES CoreMotion \
          AudioToolbox AVFoundation AVFAudio CoreAudio Metal GameController \
-         CoreVideo IOKit CoreFoundation; do
+         CoreVideo IOKit CoreFoundation CoreHaptics; do
   frameworks="$frameworks -Wl,-framework,$f"
 done
 
@@ -94,7 +94,7 @@ xcrun simctl install "$udid" "$app"
 echo "udid=$udid"
 echo "::endgroup::"
 
-( sleep 10; xcrun simctl io "$udid" screenshot "$build/smoke.png" ) &
+( sleep 4; xcrun simctl io "$udid" screenshot "$build/smoke.png" ) &
 screenshot=$!
 
 echo "::group::Run smoke app"
