@@ -25,7 +25,7 @@ set(stagingDir ${CMAKE_CURRENT_BINARY_DIR}/stage)
 # generator quotes CC=..., so hand them a compiler wrapper script.
 configure_file(${CMAKE_CURRENT_LIST_DIR}/cc-wrapper.sh.in
   ${CMAKE_CURRENT_BINARY_DIR}/ios-cc.sh @ONLY)
-file(CHMOD FILES ${CMAKE_CURRENT_BINARY_DIR}/ios-cc.sh
+file(CHMOD ${CMAKE_CURRENT_BINARY_DIR}/ios-cc.sh
   PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
 
 set(COMMON_CMAKE_ARGS
