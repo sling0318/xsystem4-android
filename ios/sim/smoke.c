@@ -1,7 +1,7 @@
 /* iOS simulator smoke test for the questions the cross build cannot answer:
  * does an ES 3.0 context come up on iOS's OpenGL stack, do xsystem4's own
- * shaders compile against it, is FreeType able to read from the bundle, and is
- * the sandbox's writable path usable for saves.
+ * shaders compile against it, does the app get a full-resolution landscape
+ * drawable, and is the sandbox writable path usable for saves.
  *
  * Not the engine: this links SDL2 + FreeType and reads the engine's real
  * shader files from the bundle.  Output is line-prefixed with SMOKE: and the
@@ -27,6 +27,11 @@ static const char glsl_preamble[] =
 
 static int failures;
 
+/* Render state shared between the checks and the frame pump. */
+static GLuint program;
+static int draw_w, draw_h;
+static int box_x, box_w, box_h;
+
 static void fail(const char *what, const char *detail)
 {
 	failures++;
@@ -34,7 +39,7 @@ static void fail(const char *what, const char *detail)
 	fflush(stdout);
 }
 
-static char *read_file(const char *base, const char *rel, size_t *len_out)
+static char *read_file(const char *base, const char *rel)
 {
 	char path[1024];
 	snprintf(path, sizeof(path), "%s/%s", base, rel);
@@ -56,13 +61,12 @@ static char *read_file(const char *base, const char *rel, size_t *len_out)
 	}
 	fclose(fp);
 	buf[size] = '\0';
-	if (len_out)
-		*len_out = size;
 	return buf;
 }
 
-static GLuint compile(GLenum type, const char *source, size_t len)
+static GLuint compile(GLenum type, const char *source)
 {
+	size_t len = strlen(source);
 	/* The engine compiles preamble + file body as one string. */
 	char *text = malloc(sizeof(glsl_preamble) + len + 1);
 	memcpy(text, glsl_preamble, sizeof(glsl_preamble) - 1);
@@ -88,11 +92,35 @@ static GLuint compile(GLenum type, const char *source, size_t len)
 	return ok ? shader : 0;
 }
 
+/* The game is 4:3; center it in the drawable the way the engine does. */
+static void letterbox43(void)
+{
+	box_w = draw_w;
+	box_h = (int)(draw_w * 3.0 / 4.0);
+	if (box_h > draw_h) {
+		box_h = draw_h;
+		box_w = (int)(draw_h * 4.0 / 3.0);
+	}
+	box_x = (draw_w - box_w) / 2;
+}
+
+static void render_frame(void)
+{
+	glViewport(0, 0, draw_w, draw_h);
+	glClearColor(0.f, 0.f, 1.f, 1.f);
+	glClear(GL_COLOR_BUFFER_BIT);
+
+	glViewport(box_x, (draw_h - box_h) / 2, box_w, box_h);
+	glDrawArrays(GL_TRIANGLES, 0, 3);
+	glFinish();
+}
+
 static void test_gl(const char *base, SDL_Window *window)
 {
-	int width, height;
-	SDL_GL_GetDrawableSize(window, &width, &height);
-	printf(TAG "drawable=%dx%d\n", width, height);
+	int win_w, win_h;
+	SDL_GetWindowSize(window, &win_w, &win_h);
+	SDL_GL_GetDrawableSize(window, &draw_w, &draw_h);
+	printf(TAG "window=%dx%d drawable=%dx%d\n", win_w, win_h, draw_w, draw_h);
 
 	printf(TAG "GL_VERSION  = %s\n", (const char *)glGetString(GL_VERSION));
 	printf(TAG "GL_RENDERER = %s\n", (const char *)glGetString(GL_RENDERER));
@@ -101,16 +129,24 @@ static void test_gl(const char *base, SDL_Window *window)
 	if (strncmp((const char *)glGetString(GL_VERSION), "OpenGL ES 3.0", 13) != 0)
 		fail("context", "not an OpenGL ES 3.0 context");
 
-	char *vert = read_file(base, "shaders/render.v.glsl", NULL);
-	char *frag = read_file(base, "shaders/fill.f.glsl", NULL);
+	/* Without a launch screen iOS keeps the app in a legacy unscaled mode. */
+	if (draw_w < 800 || draw_h < 800)
+		fail("resolution", "drawable is not full screen; check UILaunchStoryboardName");
+	if (draw_w <= draw_h)
+		fail("orientation", "expected a landscape drawable");
+
+	char *vert = read_file(base, "shaders/render.v.glsl");
+	char *frag = read_file(base, "shaders/fill.f.glsl");
 	if (!vert || !frag) {
 		fail("shader-read", "engine shaders missing from bundle");
 		return;
 	}
 
-	GLuint program = glCreateProgram();
-	GLuint v = compile(GL_VERTEX_SHADER, vert, strlen(vert));
-	GLuint f = compile(GL_FRAGMENT_SHADER, frag, strlen(frag));
+	program = glCreateProgram();
+	GLuint v = compile(GL_VERTEX_SHADER, vert);
+	GLuint f = compile(GL_FRAGMENT_SHADER, frag);
+	free(vert);
+	free(frag);
 	if (!v || !f) {
 		fail("shader-compile", "see log above");
 		return;
@@ -159,17 +195,37 @@ static void test_gl(const char *base, SDL_Window *window)
 	glUniformMatrix4fv(glGetUniformLocation(program, "view_transform"), 1, GL_FALSE, identity);
 	glUniform4f(glGetUniformLocation(program, "color"), 1.f, 0.f, 0.f, 1.f);
 
-	glViewport(0, 0, width, height);
-	glClearColor(0.f, 0.f, 1.f, 1.f);
-	glClear(GL_COLOR_BUFFER_BIT);
-	glDrawArrays(GL_TRIANGLES, 0, 3);
-	glFinish();
+	letterbox43();
+	render_frame();
 
-	GLubyte pixel[4] = { 0, 0, 0, 0 };
-	glReadPixels(width / 2, height / 2, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, pixel);
-	printf(TAG "center pixel rgba=%u,%u,%u,%u\n", pixel[0], pixel[1], pixel[2], pixel[3]);
-	if (pixel[0] < 200 || pixel[1] > 60 || pixel[2] > 60)
-		fail("render", "the red triangle did not reach the framebuffer");
+	GLubyte center[4] = { 0 }, bar[4] = { 0 };
+	glReadPixels(draw_w / 2, draw_h / 2, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, center);
+	printf(TAG "letterbox=%dx%d at x=%d\n", box_w, box_h, box_x);
+	printf(TAG "center rgba=%u,%u,%u,%u\n", center[0], center[1], center[2], center[3]);
+	if (center[0] < 200 || center[1] > 60 || center[2] > 60)
+		fail("render", "the red 4:3 box did not reach the framebuffer");
+
+	if (box_x > 0) {
+		glReadPixels(box_x / 2, draw_h / 2, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, bar);
+		printf(TAG "side bar rgba=%u,%u,%u,%u\n", bar[0], bar[1], bar[2], bar[3]);
+		if (bar[2] < 200 || bar[0] > 60)
+			fail("letterbox", "the area outside the 4:3 box is not the clear colour");
+	}
+}
+
+static void pump_window(SDL_Window *window)
+{
+	int events = 0;
+	Uint64 until = SDL_GetTicks64() + 8000;
+	while (SDL_GetTicks64() < until) {
+		SDL_Event e;
+		while (SDL_PollEvent(&e))
+			events++;
+		render_frame();
+		SDL_GL_SwapWindow(window);
+		SDL_Delay(16);
+	}
+	printf(TAG "pumped %d events\n", events);
 }
 
 static void test_font(const char *base)
@@ -271,6 +327,9 @@ static void test_audio(void)
 
 int SDL_main(int argc, char *argv[])
 {
+	(void)argc;
+	(void)argv;
+
 	setvbuf(stdout, NULL, _IOLBF, 0);
 	printf(TAG "start\n");
 
@@ -278,6 +337,7 @@ int SDL_main(int argc, char *argv[])
 		fail("SDL_Init", SDL_GetError());
 		return 1;
 	}
+
 	SDL_version sdl_version;
 	SDL_GetVersion(&sdl_version);
 	printf(TAG "sdl %d.%d.%d video=%s audio=%s\n",
@@ -293,7 +353,8 @@ int SDL_main(int argc, char *argv[])
 	                                      SDL_WINDOWPOS_UNDEFINED,
 	                                      SDL_WINDOWPOS_UNDEFINED,
 	                                      1024, 768,
-	                                      SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN);
+	                                      SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN |
+	                                      SDL_WINDOW_ALLOW_HIGHDPI);
 	if (!window) {
 		fail("CreateWindow", SDL_GetError());
 		return 1;
@@ -313,17 +374,7 @@ int SDL_main(int argc, char *argv[])
 	test_font(base);
 	test_writable();
 	test_audio();
-
-	int events = 0;
-	Uint64 until = SDL_GetTicks64() + 9000;
-	while (SDL_GetTicks64() < until) {
-		SDL_Event e;
-		while (SDL_PollEvent(&e))
-			events++;
-		SDL_GL_SwapWindow(window);
-		SDL_Delay(16);
-	}
-	printf(TAG "pumped %d events\n", events);
+	pump_window(window);
 
 	if (failures == 0)
 		printf(TAG "OK\n");

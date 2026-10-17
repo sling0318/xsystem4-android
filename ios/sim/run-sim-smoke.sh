@@ -73,6 +73,12 @@ echo "includes: $sdl_inc $sdl_cfg $ft_inc $ft_gen"
 cp "$root/xsystem4/shaders/"*.glsl "$app/shaders/"
 cp "$root/xsystem4/fonts/VL-Gothic-Regular.ttf" "$app/fonts/"
 cp "$root/ios/sim/Info.plist" "$app/Info.plist"
+
+# iOS only hands a full-resolution screen to apps that ship a launch screen.
+xcrun ibtool --errors --warnings --notices \
+  --compile "$app/LaunchScreen.storyboardc" \
+  "$root/ios/sim/LaunchScreen.storyboard"
+
 codesign --force --sign - "$app"
 echo "bundle size: $(du -sh "$app" | cut -f1)"
 echo "::endgroup::"
