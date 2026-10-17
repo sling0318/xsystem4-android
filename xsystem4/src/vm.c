@@ -112,7 +112,7 @@ static int32_t vm_trace_arg(size_t ip, int n)
 	return LittleEndian_getDW(ain->code, ip + 2 + n * 4);
 }
 
-static void vm_trace_dump(unsigned long n)
+static void vm_trace_dump(const char *tag)
 {
 	for (int i = 0; i < VM_TRACE_RING; i++) {
 		int k = (vm_trace_pos + i) % VM_TRACE_RING;
@@ -125,7 +125,7 @@ static void vm_trace_dump(unsigned long n)
 			int32_t code = vm_trace_arg(ip, 0);
 			const char *sn = (code >= 0 && code < NR_SYSCALLS && syscalls[code].name)
 				? syscalls[code].name : "?";
-			WARNING("VM RING n=%lu #%02d ip=0x%08lX %s %d(%s)", n, i,
+			WARNING("VM RING %s #%02d ip=0x%08lX %s %d(%s)", tag, i,
 				(unsigned long)ip, nm, code, sn);
 		} else if (vm_trace_op[k] == CALLHLL) {
 			int32_t lib = vm_trace_arg(ip, 0), fun = vm_trace_arg(ip, 1);
@@ -135,10 +135,10 @@ static void vm_trace_dump(unsigned long n)
 				if (fun >= 0 && fun < ain->libraries[lib].nr_functions)
 					fn = ain->libraries[lib].functions[fun].name;
 			}
-			WARNING("VM RING n=%lu #%02d ip=0x%08lX %s %s.%s", n, i,
+			WARNING("VM RING %s #%02d ip=0x%08lX %s %s.%s", tag, i,
 				(unsigned long)ip, nm, ln, fn);
 		} else {
-			WARNING("VM RING n=%lu #%02d ip=0x%08lX %s", n, i,
+			WARNING("VM RING %s #%02d ip=0x%08lX %s", tag, i,
 				(unsigned long)ip, nm);
 		}
 	}
@@ -2437,6 +2437,17 @@ static enum opcode execute_instruction(enum opcode opcode)
 	// -- NOOPs ---
 	case FUNC:
 		break;
+	case CHECKUDO: {
+		// Emitted by System 4.3 scripts. No operands, nothing on the stack in or
+		// out, and we have no UDOs to validate against, so there is nothing to do
+		// -- but say so once, in case it turns out to matter somewhere.
+		static bool warned = false;
+		if (!warned) {
+			warned = true;
+			WARNING("CHECKUDO ignored");
+		}
+		break;
+	}
 	default:
 #ifdef DEBUGGER_ENABLED
 		if ((opcode & OPTYPE_MASK) == BREAKPOINT) {
@@ -2444,7 +2455,9 @@ static enum opcode execute_instruction(enum opcode opcode)
 			return execute_instruction(opcode & ~OPTYPE_MASK);
 		}
 #endif
-		VM_ERROR("Illegal opcode: 0x%04x", opcode);
+		if (config.trace_vm)
+			vm_trace_dump("illegal");
+		VM_ERROR("Illegal opcode: 0x%04x at 0x%08lX", opcode, (unsigned long)instr_ptr);
 	}
 	return opcode;
 }
@@ -2465,7 +2478,7 @@ static void vm_execute(void)
 			vm_trace_op[vm_trace_pos] = opcode;
 			vm_trace_pos = (vm_trace_pos + 1) % VM_TRACE_RING;
 			if ((++traced % 1000000) == 0)
-				vm_trace_dump(traced);
+				vm_trace_dump("tick");
 			if ((traced % 2000000) == 0) {
 				char name[192];
 				int fno = call_stack_ptr > 0 ? call_stack[call_stack_ptr-1].fno : -1;
