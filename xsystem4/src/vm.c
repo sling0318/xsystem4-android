@@ -2447,12 +2447,14 @@ static enum opcode execute_instruction(enum opcode opcode)
 		 * no-op hands CALLMETHOD the index instead, and the method then
 		 * dereferences it as a page ("Out of bounds heap index: -1/1").
 		 */
-		static bool warned = false;
+		static int logged = 0;
 		int index = stack_pop().i;
 		int page = stack_peek(0).i;
-		if (!warned) {
-			warned = true;
-			WARNING("CHECKUDO: object=%d member=%d", page, index);
+		if (logged++ < 16) {
+			// The address tells us which call site this is, which is what we need
+			// to line it up with a function name offline.
+			WARNING("CHECKUDO @0x%lX: object=%d member=%d",
+				(unsigned long)instr_ptr, page, index);
 		}
 		break;
 	}
@@ -2650,6 +2652,18 @@ _Noreturn void _vm_error(const char *fmt, ...)
 	va_start(ap, fmt);
 	sys_vwarning(fmt, ap);
 	va_end(ap);
+	// None of that reaches logcat on Android, and a dialog quoting just the
+	// message is useless for finding the call site -- repeat it through the
+	// warning channel along with the instruction we choked on.
+	char name[192];
+	int fno = call_stack_ptr > 0 ? call_stack[call_stack_ptr-1].fno : -1;
+	va_start(ap, fmt);
+	vsnprintf(name, sizeof(name), fmt, ap);
+	va_end(ap);
+	WARNING("VM ERROR %s @0x%lX in %s", name, (unsigned long)instr_ptr,
+		fno >= 0 ? vm_trace_name(fno, name, sizeof(name)) : "<none>");
+	if (config.trace_vm && ain)
+		vm_trace_dump("error");
 	sys_warning("at %s (0x%X) in:\n", current_instruction_name(), instr_ptr);
 	vm_stack_trace();
 
