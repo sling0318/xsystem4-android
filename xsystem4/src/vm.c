@@ -488,12 +488,40 @@ static void function_call(int fno, int return_address)
 	}
 }
 
+static void vm_warn_bad_receiver(int fno, int receiver);
+
 static void method_call(int fno, int return_address)
 {
 	function_call(fno, return_address);
 	int struct_page = stack_pop().i;
+	if (unlikely(config.trace_vm && !heap_index_valid(struct_page)))
+		vm_warn_bad_receiver(fno, struct_page);
 	set_struct_page(struct_page);
 	heap[call_stack[call_stack_ptr-1].page_slot].page->local.struct_ptr = struct_page;
+}
+
+/*
+ * A method call through a handle that was never filled in doesn't fail there --
+ * it fails much later, deep inside the callee, as an "out of bounds heap index"
+ * that names nothing useful. Catch it at the call instead and say who was
+ * called and which script frames are above it.
+ */
+static void vm_warn_bad_receiver(int fno, int receiver)
+{
+	static int logged = 0;
+	if (logged++ >= 8)
+		return;
+	char buf[900];
+	char nm[160];
+	int used = snprintf(buf, sizeof(buf), "BAD RECEIVER callee=%s(#%d) handle=%d from:",
+		vm_trace_name(fno, nm, sizeof(nm)), fno, receiver);
+	for (int i = call_stack_ptr - 2; i >= 0 && used < (int)sizeof(buf) - 48; i--) {
+		char fn[160];
+		used += snprintf(buf + used, sizeof(buf) - used, " %s@0x%X",
+			vm_trace_name(call_stack[i].fno, fn, sizeof(fn)),
+			(unsigned)call_stack[i].call_address);
+	}
+	WARNING("%s", buf);
 }
 
 static void vm_execute(void);
