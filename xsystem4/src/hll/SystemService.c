@@ -66,12 +66,17 @@ static void SystemService_GetGameName(struct string **game_name)
 }
 
 /*
- * System 4.3 splits the code name above from the title shown in the window
- * caption; our ini only carries one of them (GameName), so both answer with it.
+ * System 4.3's "title" is the product identifier baked into the game's own
+ * executable, not the caption from the ini: Rance 03 slices it at fixed offsets
+ * at the very top of main() and spins forever if the pieces don't line up.
+ * It's game data, so it arrives through the ini's GameTitle key rather than
+ * being hardcoded here.
  */
 static void SystemService_GetGameTitle(struct string **game_title)
 {
-	SystemService_GetGameName(game_title);
+	if (*game_title)
+		free_string(*game_title);
+	*game_title = cstr_to_string(config.game_title ? config.game_title : config.game_name);
 }
 
 HLL_WARN_UNIMPLEMENTED(false, bool, SystemService, AddURLMenu, struct string *title, struct string *url);

@@ -48,7 +48,11 @@ data class Item(val name: String, val path: File, val homedir: File, val savedir
                 return Item(dir.name, dir, homedir, null, null, err)
             }
             val icon = findIcon(dir)
-            val ini = System40Ini.parse(iniFile)
+            // 汉化版把 GameName 重编码成了 GBK；按 .text-gbk 标记选字符集，否则照旧 Shift_JIS。
+            val sjis = Charset.forName("Shift_JIS")
+            val charset = if (File(dir, ".text-gbk").exists())
+                runCatching { Charset.forName("GBK") }.getOrDefault(sjis) else sjis
+            val ini = System40Ini.parse(iniFile, charset)
             if (ini.gameName == null) {
                 val err = context.getString(R.string.toast_no_GameName, iniFile.path)
                 Log.w("GameList", err)
@@ -114,11 +118,11 @@ data class Item(val name: String, val path: File, val homedir: File, val savedir
 
 data class System40Ini(val gameName: String?, val SaveFolder: String?) {
     companion object {
-        fun parse(file: File): System40Ini {
+        fun parse(file: File, charset: Charset = Charset.forName("Shift_JIS")): System40Ini {
             val regex = Regex("""(\w+)\s*=\s*"([^"]*)"""")
             var gameName: String? = null
             var SaveFolder: String? = null
-            for (line in file.readLines(Charset.forName("Shift_JIS"))) {
+            for (line in file.readLines(charset)) {
                 regex.matchEntire(line)?.let {
                     when (it.groupValues[1]) {
                         "GameName" -> gameName = it.groupValues[2]

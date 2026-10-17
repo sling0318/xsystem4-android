@@ -48,6 +48,7 @@ void apply_game_specific_hacks(struct ain *ain);
 
 struct config config = {
 	.game_name = NULL,
+	.game_title = NULL,
 	.boot_name = NULL,
 	.ain_filename = NULL,
 	.vm_name = NULL,
@@ -137,6 +138,8 @@ static bool read_config(const char *path)
 	for (int i = 0; i < ini_size; i++) {
 		if (!strcmp(ini[i].name->text, "GameName")) {
 			config.game_name = strdup(ini_string(&ini[i])->text);
+		} else if (!strcmp(ini[i].name->text, "GameTitle")) {
+			config.game_title = strdup(ini_string(&ini[i])->text);
 		} else if (!strcmp(ini[i].name->text, "BootName")) {
 			config.boot_name = strdup(ini_string(&ini[i])->text);
 		} else if (!strcmp(ini[i].name->text, "CodeName")) {
