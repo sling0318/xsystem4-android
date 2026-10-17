@@ -139,7 +139,10 @@ extern bool vm_reset_once;
 
 #if defined(__ANDROID__) || defined(RELEASE)
 // Report the error with a message box and exit.
-#define VM_ERROR ERROR
+// ERROR() swallows the call site, so note it on the warning channel first --
+// otherwise the only thing that survives is a dialog quoting the message.
+void vm_error_note(void);
+#define VM_ERROR(fmt, ...) do { vm_error_note(); ERROR(fmt, ##__VA_ARGS__); } while (0)
 #else
 #define VM_ERROR(fmt, ...) \
 	_vm_error("*ERROR*(%s:%s:%d): " fmt "\n", __FILE__, __func__, __LINE__, ##__VA_ARGS__)

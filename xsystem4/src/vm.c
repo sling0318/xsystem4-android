@@ -2646,24 +2646,30 @@ void vm_stack_trace(void)
 	}
 }
 
+/*
+ * Where the VM was when something went wrong. On Android VM_ERROR goes straight
+ * to a dialog, so without this the faulting instruction and call stack never
+ * appear anywhere you can read them.
+ */
+void vm_error_note(void)
+{
+	char name[192];
+	int fno = call_stack_ptr > 0 ? call_stack[call_stack_ptr-1].fno : -1;
+	WARNING("VM ERROR at 0x%08lX in %s (depth %d): %s",
+		(unsigned long)instr_ptr,
+		fno >= 0 ? vm_trace_name(fno, name, sizeof(name)) : "<none>",
+		call_stack_ptr, current_instruction_name());
+	if (config.trace_vm && ain)
+		vm_trace_dump("error");
+}
+
 _Noreturn void _vm_error(const char *fmt, ...)
 {
 	va_list ap;
 	va_start(ap, fmt);
 	sys_vwarning(fmt, ap);
 	va_end(ap);
-	// None of that reaches logcat on Android, and a dialog quoting just the
-	// message is useless for finding the call site -- repeat it through the
-	// warning channel along with the instruction we choked on.
-	char name[192];
-	int fno = call_stack_ptr > 0 ? call_stack[call_stack_ptr-1].fno : -1;
-	va_start(ap, fmt);
-	vsnprintf(name, sizeof(name), fmt, ap);
-	va_end(ap);
-	WARNING("VM ERROR %s @0x%lX in %s", name, (unsigned long)instr_ptr,
-		fno >= 0 ? vm_trace_name(fno, name, sizeof(name)) : "<none>");
-	if (config.trace_vm && ain)
-		vm_trace_dump("error");
+	vm_error_note();
 	sys_warning("at %s (0x%X) in:\n", current_instruction_name(), instr_ptr);
 	vm_stack_trace();
 
