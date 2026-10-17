@@ -2439,22 +2439,17 @@ static enum opcode execute_instruction(enum opcode opcode)
 		break;
 	case CHECKUDO: {
 		/*
-		 * System 4.3 emits this right before calling a method on a global
-		 * manager object:
-		 *     <object page>, <member index>  CHECKUDO  ...  CALLMETHOD
-		 * It consumes the index and leaves the object page on top, so the
-		 * following CALLMETHOD finds its receiver there. Treating it as a
-		 * no-op hands CALLMETHOD the index instead, and the method then
-		 * dereferences it as a page ("Out of bounds heap index: -1/1").
+		 * System 4.3 emits this before calling through an object handle. It leaves
+		 * the stack alone: the sites in Rance 03 sit at depths 1, 2, 3 and 5, so it
+		 * can neither consume nor produce a value. What it is checking -- and what
+		 * it does when the handle is -1 -- we don't model yet, so step over it and
+		 * let the caller's own dereference complain.
 		 */
 		static int logged = 0;
-		int index = stack_pop().i;
-		int page = stack_peek(0).i;
-		if (logged++ < 16) {
-			// The address tells us which call site this is, which is what we need
-			// to line it up with a function name offline.
-			WARNING("CHECKUDO @0x%lX: object=%d member=%d",
-				(unsigned long)instr_ptr, page, index);
+		if (config.trace_vm && logged++ < 16) {
+			int page = stack_peek(0).i;
+			WARNING("CHECKUDO @0x%lX: handle=%d depth=%d",
+				(unsigned long)instr_ptr, page, stack_ptr);
 		}
 		break;
 	}
