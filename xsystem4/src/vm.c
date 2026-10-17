@@ -96,6 +96,54 @@ static const char *vm_trace_name(int fno, char *dst, size_t size)
 	return dst;
 }
 
+/*
+ * Ring of the instructions we just ran. When the VM is spinning, the loop body
+ * is short, so replaying the last few dozen is enough to read off the condition
+ * it never satisfies -- and we get the mnemonics from the engine's own table
+ * instead of carrying a second disassembler around.
+ */
+#define VM_TRACE_RING 48
+static size_t vm_trace_ip[VM_TRACE_RING];
+static uint16_t vm_trace_op[VM_TRACE_RING];
+static int vm_trace_pos = 0;
+
+static int32_t vm_trace_arg(size_t ip, int n)
+{
+	return LittleEndian_getDW(ain->code, ip + 2 + n * 4);
+}
+
+static void vm_trace_dump(unsigned long n)
+{
+	for (int i = 0; i < VM_TRACE_RING; i++) {
+		int k = (vm_trace_pos + i) % VM_TRACE_RING;
+		if (!vm_trace_op[k])
+			continue;
+		const char *nm = instructions[vm_trace_op[k]].name;
+		size_t ip = vm_trace_ip[k];
+		// CALLSYS/CALLHLL 光有名字读不出在等什么，把操作数解成库.函数/系统调用名
+		if (vm_trace_op[k] == CALLSYS) {
+			int32_t code = vm_trace_arg(ip, 0);
+			const char *sn = (code >= 0 && code < NR_SYSCALLS && syscalls[code].name)
+				? syscalls[code].name : "?";
+			WARNING("VM RING n=%lu #%02d ip=0x%08lX %s %d(%s)", n, i,
+				(unsigned long)ip, nm, code, sn);
+		} else if (vm_trace_op[k] == CALLHLL) {
+			int32_t lib = vm_trace_arg(ip, 0), fun = vm_trace_arg(ip, 1);
+			const char *ln = "?", *fn = "?";
+			if (lib >= 0 && lib < ain->nr_libraries) {
+				ln = ain->libraries[lib].name;
+				if (fun >= 0 && fun < ain->libraries[lib].nr_functions)
+					fn = ain->libraries[lib].functions[fun].name;
+			}
+			WARNING("VM RING n=%lu #%02d ip=0x%08lX %s %s.%s", n, i,
+				(unsigned long)ip, nm, ln, fn);
+		} else {
+			WARNING("VM RING n=%lu #%02d ip=0x%08lX %s", n, i,
+				(unsigned long)ip, nm);
+		}
+	}
+}
+
 // Read the opcode at ADDR.
 static int16_t get_opcode(size_t addr)
 {
@@ -2406,19 +2454,26 @@ static void vm_execute(void)
 	static unsigned long traced = 0;
 	for (;;) {
 		uint16_t opcode;
-		if (config.trace_vm && (++traced % 100000) == 0) {
-			char name[192];
-			int fno = call_stack_ptr > 0 ? call_stack[call_stack_ptr-1].fno : -1;
-			WARNING("VM TICK n=%lu ip=0x%08lX depth=%d fn=%s", traced,
-				(unsigned long)instr_ptr, call_stack_ptr,
-				fno >= 0 ? vm_trace_name(fno, name, sizeof(name)) : "<none>");
-		}
 		if (instr_ptr == VM_RETURN)
 			return;
 		if (unlikely(instr_ptr >= ain->code_size)) {
 			VM_ERROR("Illegal instruction pointer: 0x%08lX", instr_ptr);
 		}
 		opcode = get_opcode(instr_ptr);
+		if (config.trace_vm) {
+			vm_trace_ip[vm_trace_pos] = instr_ptr;
+			vm_trace_op[vm_trace_pos] = opcode;
+			vm_trace_pos = (vm_trace_pos + 1) % VM_TRACE_RING;
+			if ((++traced % 1000000) == 0)
+				vm_trace_dump(traced);
+			if ((traced % 2000000) == 0) {
+				char name[192];
+				int fno = call_stack_ptr > 0 ? call_stack[call_stack_ptr-1].fno : -1;
+				WARNING("VM TICK n=%lu ip=0x%08lX depth=%d fn=%s", traced,
+					(unsigned long)instr_ptr, call_stack_ptr,
+					fno >= 0 ? vm_trace_name(fno, name, sizeof(name)) : "<none>");
+			}
+		}
 		opcode = execute_instruction(opcode);
 		instr_ptr += instructions[opcode].ip_inc;
 	}
