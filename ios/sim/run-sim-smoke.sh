@@ -95,24 +95,40 @@ echo "udid=$udid"
 echo "::endgroup::"
 
 echo "::group::Run smoke app"
-# --console-pty attaches and does not return after the app exits on these
-# runners, so redirect the app's stdio to files instead and poll them.
-xcrun simctl launch --stdout "$build/smoke.log" --stderr "$build/smoke.err" \
-  "$udid" "$bundle"
-sleep 5
-xcrun simctl io "$udid" screenshot "$build/smoke.png" || echo "screenshot failed"
+# This simctl has no --stdout/--stderr, and --console-pty never returns after
+# the app exits, so attach the console in the background, redirect in the
+# shell, and kill the launcher once the app has reported its verdict.
+xcrun simctl launch --console "$udid" "$bundle" > "$build/smoke.log" 2>&1 &
+launcher=$!
+
+wait_for() {
+  for _ in $(seq 1 "$2"); do
+    grep -q "$1" "$build/smoke.log" 2>/dev/null && return 0
+    sleep 1
+  done
+  return 1
+}
 
 status=timeout
-for _ in $(seq 1 45); do
-  if grep -q "SMOKE: OK" "$build/smoke.log" 2>/dev/null; then status=ok; break; fi
-  if grep -q "SMOKE: FAIL" "$build/smoke.log" 2>/dev/null; then status=fail; break; fi
-  sleep 2
-done
+if wait_for "SMOKE: audio ok" 60; then
+  # The app keeps its window up for several more seconds: good moment to shoot.
+  sleep 1
+  xcrun simctl io "$udid" screenshot "$build/smoke.png" || echo "screenshot failed"
+  if wait_for "SMOKE: OK" 40; then
+    status=ok
+  elif grep -q "failure(s)" "$build/smoke.log"; then
+    status=fail
+  fi
+elif wait_for "SMOKE: FAIL" 10; then
+  status=fail
+fi
+
 cat "$build/smoke.log" 2>/dev/null || true
-echo "stderr:"; cat "$build/smoke.err" 2>/dev/null || true
 echo "result=$status"
 echo "::endgroup::"
 
+kill $launcher 2>/dev/null || true
+wait $launcher 2>/dev/null || true
 xcrun simctl terminate "$udid" "$bundle" 2>/dev/null || true
 xcrun simctl shutdown "$udid" 2>/dev/null || true
 
