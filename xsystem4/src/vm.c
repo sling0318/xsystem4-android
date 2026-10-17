@@ -263,11 +263,33 @@ static union vm_value *stack_peek_ptr(int n)
 	return &stack[stack_ptr - (1 + n)];
 }
 
+/*
+ * System 4.3 scripts use -1 as a null object handle and keep reading members
+ * through it -- CASTimerManager@CheckHandle branches on `handle < 0` on purpose,
+ * and GetObject returns -1 when it finds nothing. Aborting on that kills Rance 03
+ * part-way through initLibrary, so hand out a scratch slot and carry on.
+ */
+static union vm_value null_udo_value = { .i = -1 };
+
+static bool null_udo_read(int32_t heap_index)
+{
+	if (heap_index != -1 || !config.null_udo)
+		return false;
+	static bool warned = false;
+	if (!warned) {
+		warned = true;
+		WARNING("dereferencing a null UDO handle (--null-udo)");
+	}
+	return true;
+}
+
 // Pop a reference off the stack, returning the address of the referenced object.
 static union vm_value *stack_pop_var(void)
 {
 	int32_t page_index = stack_pop().i;
 	int32_t heap_index = stack_pop().i;
+	if (unlikely(null_udo_read(heap_index)))
+		return &null_udo_value;
 	if (unlikely(!heap_index_valid(heap_index)))
 		VM_ERROR("Out of bounds heap index: %d/%d", heap_index, page_index);
 	if (unlikely(!heap[heap_index].page || page_index >= heap[heap_index].page->nr_vars))

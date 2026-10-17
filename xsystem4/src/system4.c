@@ -75,6 +75,7 @@ struct config config = {
 	.no_fnl = false,
 	.stub_unimplemented_hll = false,
 	.trace_vm = false,
+	.null_udo = false,
 	.font_paths = { NULL, NULL },
 };
 
@@ -389,6 +390,7 @@ static void usage(void)
 	puts("        --no-fnl         Ignore .fnl font libraries and render all text with TTF fonts");
 	puts("        --stub-hll       Return zero from unimplemented HLL functions instead of aborting");
 	puts("        --trace-vm       Log scenario switches and a VM heartbeat to the console");
+	puts("        --null-udo         Read a null UDO handle as -1 instead of aborting");
 	puts("        --font-x-scale   Specify the x scale for text rendering (1.0 = default scale)");
 	puts("    -j, --joypad         Enable joypad");
 	puts("        --msgskip-delay  Specify the delay in ms to add when skipping messages with CTRL");
@@ -426,6 +428,7 @@ enum {
 	LOPT_NO_FNL,
 	LOPT_STUB_HLL,
 	LOPT_TRACE_VM,
+	LOPT_NULL_UDO,
 	LOPT_MSGSKIP_DELAY,
 	LOPT_SAVE_FOLDER,
 	LOPT_SAVE_FORMAT,
@@ -472,6 +475,7 @@ int main(int argc, char *argv[])
 			{ "no-fnl",        no_argument,       0, LOPT_NO_FNL },
 			{ "stub-hll",      no_argument,       0, LOPT_STUB_HLL },
 			{ "trace-vm",      no_argument,       0, LOPT_TRACE_VM },
+			{ "null-udo",      no_argument,       0, LOPT_NULL_UDO },
 			{ "msgskip-delay", required_argument, 0, LOPT_MSGSKIP_DELAY },
 			{ "save-folder",   required_argument, 0, LOPT_SAVE_FOLDER },
 			{ "save-format",   required_argument, 0, LOPT_SAVE_FORMAT },
@@ -537,6 +541,9 @@ int main(int argc, char *argv[])
 			break;
 		case LOPT_TRACE_VM:
 			config.trace_vm = true;
+			break;
+		case LOPT_NULL_UDO:
+			config.null_udo = true;
 			break;
 		case LOPT_JOYPAD:
 			joypad = optarg ? optarg : "on";

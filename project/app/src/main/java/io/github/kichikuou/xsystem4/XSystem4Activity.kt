@@ -45,6 +45,9 @@ class XSystem4Activity : SDLActivity() {
         if (java.io.File(gameRoot, ".vm-trace").exists()) {
             args.add("--trace-vm")
         }
+        if (java.io.File(gameRoot, ".null-udo").exists()) {
+            args.add("--null-udo")
+        }
         return args.toTypedArray()
     }
 

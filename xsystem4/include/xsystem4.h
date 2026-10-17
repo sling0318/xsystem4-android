@@ -57,6 +57,7 @@ struct config {
 	bool no_fnl;
 	bool stub_unimplemented_hll;
 	bool trace_vm;
+	bool null_udo;
 };
 
 extern struct config config;
