@@ -2438,13 +2438,21 @@ static enum opcode execute_instruction(enum opcode opcode)
 	case FUNC:
 		break;
 	case CHECKUDO: {
-		// Emitted by System 4.3 scripts. No operands, nothing on the stack in or
-		// out, and we have no UDOs to validate against, so there is nothing to do
-		// -- but say so once, in case it turns out to matter somewhere.
+		/*
+		 * System 4.3 emits this right before calling a method on a global
+		 * manager object:
+		 *     <object page>, <member index>  CHECKUDO  ...  CALLMETHOD
+		 * It consumes the index and leaves the object page on top, so the
+		 * following CALLMETHOD finds its receiver there. Treating it as a
+		 * no-op hands CALLMETHOD the index instead, and the method then
+		 * dereferences it as a page ("Out of bounds heap index: -1/1").
+		 */
 		static bool warned = false;
+		int index = stack_pop().i;
+		int page = stack_peek(0).i;
 		if (!warned) {
 			warned = true;
-			WARNING("CHECKUDO ignored");
+			WARNING("CHECKUDO: object=%d member=%d", page, index);
 		}
 		break;
 	}
