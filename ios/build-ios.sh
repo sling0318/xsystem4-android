@@ -44,7 +44,8 @@ fi
 # the engine show up here. Dependency archives are passed by reference instead,
 # like a real app would, to avoid duplicate-symbol noise between them.
 libs=""
-for a in $(find "$build/stage" -name '*.a' | sort); do
+for a in $(find "$build/stage" -name '*.a' | sort) \
+         $(find "$build" -name '*.a' -not -path "$build/stage/*" | sort); do
   libs="$libs $a"
 done
 libs="$libs $sys4_a"
