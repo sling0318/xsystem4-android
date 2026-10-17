@@ -1,0 +1,38 @@
+name: iOS cross build (feasibility spike)
+
+on:
+  push:
+    branches: [ios-spike]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+    - uses: actions/checkout@v6
+
+    - name: Install build tools
+      run: brew install ninja flex bison gawk
+
+    - name: Prepend keg-only flex/bison
+      run: |
+        echo "$(brew --prefix flex)/bin" >> "$GITHUB_PATH"
+        echo "$(brew --prefix bison)/bin" >> "$GITHUB_PATH"
+        flex --version
+        bison --version | head -1
+
+    - name: Cross build
+      run: sh ios/build-ios.sh
+
+    - name: Report how SDL creates the iOS GL context
+      run: |
+        find build-ios -name SDL_uikitopengles.m -print -exec grep -n -B2 -A8 \
+          "EAGLRenderingAPI api" {} +
+
+    - name: Upload static libraries
+      uses: actions/upload-artifact@v7
+      with:
+        name: xsystem4-ios-arm64
+        path: build-ios/stage/lib
+        archive: false

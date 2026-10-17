@@ -1,0 +1,63 @@
+# Cross-build toolchain for arm64 iOS devices (no simulator).
+#
+# Usage:
+#   cmake -B build-ios -S ios -GNinja -DCMAKE_TOOLCHAIN_FILE=ios/toolchain.cmake
+
+set(CMAKE_SYSTEM_NAME iOS)
+set(CMAKE_SYSTEM_PROCESSOR arm64)
+set(IOS TRUE)
+
+set(IOS_DEPLOYMENT_TARGET "13.0" CACHE STRING "Minimum iOS version to build for")
+
+find_program(XCRUN_EXECUTABLE xcrun REQUIRED)
+
+execute_process(
+  COMMAND ${XCRUN_EXECUTABLE} --sdk iphoneos --show-sdk-path
+  OUTPUT_VARIABLE IOS_SDK_PATH OUTPUT_STRIP_TRAILING_WHITESPACE)
+execute_process(
+  COMMAND ${XCRUN_EXECUTABLE} --find clang --sdk iphoneos
+  OUTPUT_VARIABLE IOS_CLANG OUTPUT_STRIP_TRAILING_WHITESPACE)
+execute_process(
+  COMMAND ${XCRUN_EXECUTABLE} --find clang++ --sdk iphoneos
+  OUTPUT_VARIABLE IOS_CLANGXX OUTPUT_STRIP_TRAILING_WHITESPACE)
+execute_process(
+  COMMAND ${XCRUN_EXECUTABLE} --find ar --sdk iphoneos
+  OUTPUT_VARIABLE IOS_AR OUTPUT_STRIP_TRAILING_WHITESPACE)
+execute_process(
+  COMMAND ${XCRUN_EXECUTABLE} --find ranlib --sdk iphoneos
+  OUTPUT_VARIABLE IOS_RANLIB OUTPUT_STRIP_TRAILING_WHITESPACE)
+execute_process(
+  COMMAND ${XCRUN_EXECUTABLE} --find strip --sdk iphoneos
+  OUTPUT_VARIABLE IOS_STRIP OUTPUT_STRIP_TRAILING_WHITESPACE)
+
+set(IOS_TARGET "arm64-apple-ios${IOS_DEPLOYMENT_TARGET}" CACHE STRING "" FORCE)
+
+set(CMAKE_OSX_SYSROOT "${IOS_SDK_PATH}" CACHE PATH "" FORCE)
+set(CMAKE_OSX_ARCHITECTURES "arm64" CACHE STRING "" FORCE)
+set(CMAKE_OSX_DEPLOYMENT_TARGET "${IOS_DEPLOYMENT_TARGET}" CACHE STRING "" FORCE)
+
+set(CMAKE_C_COMPILER "${IOS_CLANG}" CACHE FILEPATH "" FORCE)
+set(CMAKE_CXX_COMPILER "${IOS_CLANGXX}" CACHE FILEPATH "" FORCE)
+set(CMAKE_AR "${IOS_AR}" CACHE FILEPATH "" FORCE)
+set(CMAKE_RANLIB "${IOS_RANLIB}" CACHE FILEPATH "" FORCE)
+set(CMAKE_STRIP "${IOS_STRIP}" CACHE FILEPATH "" FORCE)
+
+# Autotools / hand-written build invocations reuse these.
+set(IOS_TARGET_CFLAGS "-target ${IOS_TARGET} -isysroot ${IOS_SDK_PATH}")
+set(IOS_TARGET_CC "${IOS_CLANG} ${IOS_TARGET_CFLAGS}")
+
+# Native triple of the build machine (arm64 macOS runners included).
+execute_process(
+  COMMAND uname -m
+  OUTPUT_VARIABLE IOS_UNAME_M OUTPUT_STRIP_TRAILING_WHITESPACE)
+if(IOS_UNAME_M STREQUAL "arm64")
+  set(IOS_HOST_TRIPLE "aarch64-apple-darwin" CACHE STRING "" FORCE)
+else()
+  set(IOS_HOST_TRIPLE "x86_64-apple-darwin" CACHE STRING "" FORCE)
+endif()
+
+# Staged headers and libraries live outside the sysroot.
+set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
+set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY BOTH)
+set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE BOTH)
+set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE BOTH)

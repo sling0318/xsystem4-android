@@ -25,7 +25,12 @@ find_package(ZLIB REQUIRED)
 
 add_subdirectory(subprojects/libsys4)
 
-add_library(xsystem4 SHARED)
+# iOS cannot load dynamically linked libraries outside the system ones.
+if(IOS)
+  add_library(xsystem4 STATIC)
+else()
+  add_library(xsystem4 SHARED)
+endif()
 
 target_compile_definitions(xsystem4 PRIVATE
   _DEFAULT_SOURCE
@@ -33,6 +38,12 @@ target_compile_definitions(xsystem4 PRIVATE
   )
 
 target_include_directories(xsystem4 PRIVATE include)
+
+if(IOS)
+  # The SDK provides <OpenGLES/ES3/gl.h>, not the Khronos <GLES3/gl3.h>.
+  target_include_directories(xsystem4 PRIVATE
+    ${CMAKE_CURRENT_LIST_DIR}/../ios/shim)
+endif()
 
 execute_process(
   COMMAND git rev-parse --short HEAD
@@ -228,7 +239,13 @@ target_sources(xsystem4 PRIVATE
   )
 
 target_link_libraries(xsystem4 PRIVATE
-  m ZLIB::ZLIB SDL2::SDL2 Freetype::Freetype ffi GLESv3 cglm SndFile::sndfile sys4)
+  m ZLIB::ZLIB SDL2::SDL2 Freetype::Freetype ffi cglm SndFile::sndfile sys4)
+
+if(IOS)
+  target_link_libraries(xsystem4 PRIVATE "-framework OpenGLES")
+else()
+  target_link_libraries(xsystem4 PRIVATE GLESv3)
+endif()
 
 target_compile_options(xsystem4 PRIVATE -Wno-unused-parameter)
 
