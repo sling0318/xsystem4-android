@@ -51,8 +51,8 @@ libs="$libs $sys4_a"
 
 frameworks=""
 for f in UIKit Foundation CoreGraphics QuartzCore OpenGLES CoreMotion \
-         AudioToolbox AVFoundation Metal GameController CoreVideo IOKit \
-         CoreFoundation; do
+         AudioToolbox AVFoundation AVFAudio CoreAudio Metal GameController \
+         CoreVideo IOKit CoreFoundation CoreHaptics; do
   frameworks="$frameworks -Wl,-framework,$f"
 done
 

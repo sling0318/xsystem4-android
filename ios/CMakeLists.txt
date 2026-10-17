@@ -137,6 +137,10 @@ ExternalProject_Add(
     AR=${CMAKE_AR}
     RANLIB=${CMAKE_RANLIB}
     STRIP=${CMAKE_STRIP}
+    # Apple's assembler rejects libffi's hand-written .cfi_* records when
+    # cross-building for iOS ("invalid CFI advance_loc expression"), and
+    # ffi_call does not need unwind info.
+    gcc_cv_as_cfi_pseudo_op=no
     <SOURCE_DIR>/configure
     --host=aarch64-apple-ios
     --build=${IOS_HOST_TRIPLE}
