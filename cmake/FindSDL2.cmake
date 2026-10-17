@@ -11,6 +11,10 @@ if (NOT TARGET SDL2::SDL2)
     set(SDL_SHARED OFF)
     set(SDL_STATIC ON)
     set(SDL_TEST OFF)
+    # The iOS hidapi backend drags in MultipeerConnectivity/CoreBluetooth and
+    # this game is touch-driven; MFi controllers stay available via GameController.
+    set(SDL_HIDAPI OFF)
+    set(SDL_HIDAPI OFF CACHE BOOL "" FORCE)
     FetchContent_MakeAvailable(SDL)
     if (TARGET SDL2-static)
       install(TARGETS SDL2-static)
