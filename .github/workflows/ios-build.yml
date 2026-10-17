@@ -34,5 +34,6 @@ jobs:
       uses: actions/upload-artifact@v7
       with:
         name: xsystem4-ios-arm64
-        path: build-ios/stage/lib
-        archive: false
+        path: |
+          build-ios/stage/lib
+          build-ios/xsystem4-ios-linktest
