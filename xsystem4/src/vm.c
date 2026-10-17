@@ -2489,17 +2489,19 @@ static enum opcode execute_instruction(enum opcode opcode)
 		break;
 	case CHECKUDO: {
 		/*
-		 * System 4.3 emits this before calling through an object handle. It leaves
-		 * the stack alone: the sites in Rance 03 sit at depths 1, 2, 3 and 5, so it
-		 * can neither consume nor produce a value. What it is checking -- and what
-		 * it does when the handle is -1 -- we don't model yet, so step over it and
-		 * let the caller's own dereference complain.
+		 * System 4.3 emits `..., <object>, <handle>, CHECKUDO, ... CALLMETHOD`:
+		 * the check consumes the handle and leaves the object underneath to be the
+		 * method receiver. Verified on CASTimer@Reset: consuming nothing makes
+		 * GetObject receive the raw handle (-1) and the game raises its own
+		 * "CASTimerManager - handle error"; consuming the object instead moves the
+		 * failure further out to the first party-initialising call.
 		 */
 		static int logged = 0;
+		int handle = stack_pop().i;
 		if (config.trace_vm && logged++ < 16) {
-			int page = stack_peek(0).i;
-			WARNING("CHECKUDO @0x%lX: handle=%d depth=%d",
-				(unsigned long)instr_ptr, page, stack_ptr);
+			int obj = stack_peek(0).i;
+			WARNING("CHECKUDO @0x%lX: handle=%d -> receiver=%d",
+				(unsigned long)instr_ptr, handle, obj);
 		}
 		break;
 	}
