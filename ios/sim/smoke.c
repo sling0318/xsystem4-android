@@ -278,7 +278,10 @@ int SDL_main(int argc, char *argv[])
 		fail("SDL_Init", SDL_GetError());
 		return 1;
 	}
-	printf(TAG "sdl %s video=%s audio=%s\n", SDL_GetVersion(),
+	SDL_version sdl_version;
+	SDL_GetVersion(&sdl_version);
+	printf(TAG "sdl %d.%d.%d video=%s audio=%s\n",
+	       sdl_version.major, sdl_version.minor, sdl_version.patch,
 	       SDL_GetCurrentVideoDriver(), SDL_GetCurrentAudioDriver());
 
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
