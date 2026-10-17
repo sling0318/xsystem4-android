@@ -47,8 +47,25 @@ for f in UIKit Foundation CoreGraphics QuartzCore OpenGLES CoreMotion \
   frameworks="$frameworks -Wl,-framework,$f"
 done
 
-"$clang" -target "$target" -isysroot "$sdk" -O1 -g \
-  -I "$stage/include" -I "$stage/include/SDL2" -I "$stage/include/freetype2" \
+# SDL2 and FreeType are built inside the engine's build tree and are not
+# installed there, so locate the header directories instead of guessing them.
+find_header() {
+  local hit
+  hit=$(find "$stage" "$build" -name "$1" -print -quit 2>/dev/null || true)
+  if [ -z "$hit" ]; then
+    echo "could not locate header $1" >&2
+    exit 1
+  fi
+  dirname "$hit"
+}
+sdl_inc=$(find_header SDL.h)
+sdl_cfg=$(find_header SDL_config.h)
+ft_inc=$(find_header ft2build.h)
+ft_gen=$(dirname "$(dirname "$(find_header ftoption.h)")")
+echo "includes: $sdl_inc $sdl_cfg $ft_inc $ft_gen"
+
+"$clang" -target "$target" -isysroot "$sdk" -O1 -g -Wno-deprecated-declarations \
+  -I "$sdl_inc" -I "$sdl_cfg" -I "$ft_inc" -I "$ft_gen" \
   -I "$root/ios/shim" \
   -o "$app/smoke" "$root/ios/sim/smoke.c" \
   $libs $frameworks -liconv

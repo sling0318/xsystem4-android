@@ -44,6 +44,9 @@ if(IOS)
   target_include_directories(xsystem4 PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/../ios/shim)
   target_compile_definitions(xsystem4 PRIVATE XSYS4_IOS=1)
+  # Apple declares every single OpenGL ES entry point deprecated; that noise
+  # buries real diagnostics in the build log.
+  target_compile_options(xsystem4 PRIVATE -Wno-deprecated-declarations)
 endif()
 
 execute_process(
