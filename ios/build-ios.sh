@@ -14,7 +14,7 @@ build=$root/build-ios
 IOS_DEPLOYMENT_TARGET=${IOS_DEPLOYMENT_TARGET:-13.0}
 
 sdk=$(xcrun --sdk iphoneos --show-sdk-path)
-clang=$(xcrun --find --sdk iphoneos clang)
+clang=$(xcrun --sdk iphoneos --find clang)
 
 echo "::group::Configure"
 cmake -B "$build" -S "$root/ios" -GNinja \
@@ -24,7 +24,9 @@ cmake -B "$build" -S "$root/ios" -GNinja \
 echo "::endgroup::"
 
 echo "::group::Build dependencies and engine"
-cmake --build "$build" --target install
+# No install() rules in the super-build root, so there is no `install` target;
+# building the default target runs each ExternalProject's install step.
+cmake --build "$build"
 echo "::endgroup::"
 
 echo "Staged archives:"
