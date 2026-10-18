@@ -2120,10 +2120,19 @@ static void ctrl_stack_init(void)
 // controller". In practice the game only ever passes -1, and the active
 // controller is always the top of the stack at that point, so this
 // degenerates to a simple push.
+//
+// Rance 03 numbers layers from 0 and calls AddController(n) with
+// n == the current layer count (AFL_Parts_AddTopLayer derives the number
+// from NumofLayer), so accept that form too: append when n is the next
+// free slot, and treat a repeat of an existing number as "activate it".
 int PE_AddController(int index)
 {
-	if (index != -1)
-		VM_ERROR("index != -1 not supported (got %d)", index);
+	if (index >= 0 && index < ctrl_stack.nr_controllers) {
+		ctrl_stack.active = index;
+		return index;
+	}
+	if (index != -1 && index != ctrl_stack.nr_controllers)
+		VM_ERROR("controller index not supported (got %d, have %d)", index, ctrl_stack.nr_controllers);
 	if (ctrl_stack.nr_controllers > 0 &&
 			ctrl_stack.active != ctrl_stack.nr_controllers - 1)
 		VM_ERROR("active controller is not at the top of the stack");
@@ -2138,18 +2147,26 @@ int PE_AddController(int index)
 // Removes the controller at position `index` from the stack, releases all
 // parts belonging to it, and returns their parts numbers in
 // `erase_number_list`. `index == -1` means "remove the currently active
-// controller". In practice the game only ever passes -1, and the active
-// controller is always the top of the stack at that point, so this
+// controller". In practice the Rance 9 games only ever pass -1, and the
+// active controller is always the top of the stack at that point, so this
 // degenerates to a simple pop.
+//
+// Rance 03 passes an explicit layer number (PARTS_EraseLayer(ID)), so
+// remove that layer and shift the numbers above it down; the game
+// renumbers through NumofLayer on every AddTopLayer, so this stays
+// consistent on its side.
 void PE_RemoveController(struct page **erase_number_list, int index)
 {
-	if (index != -1)
-		VM_ERROR("index != -1 not supported (got %d)", index);
-	if (ctrl_stack.nr_controllers == 0 ||
-			ctrl_stack.active != ctrl_stack.nr_controllers - 1)
-		VM_ERROR("active controller is not at the top of the stack");
+	if (index == -1) {
+		if (ctrl_stack.nr_controllers == 0 ||
+				ctrl_stack.active != ctrl_stack.nr_controllers - 1)
+			VM_ERROR("active controller is not at the top of the stack");
+		index = ctrl_stack.active;
+	}
+	if (index < 0 || index >= ctrl_stack.nr_controllers)
+		VM_ERROR("Invalid controller number: %d", index);
 
-	int ctrl_no = ctrl_stack.active;
+	int ctrl_no = index;
 
 	// Collect and release parts belonging to this controller
 	struct parts *p = TAILQ_FIRST(&parts_list);
@@ -2164,9 +2181,14 @@ void PE_RemoveController(struct page **erase_number_list, int index)
 	}
 
 	ctrl_stack.nr_controllers--;
+	struct parts *q;
+	PARTS_LIST_FOREACH(q) {
+		if (q->controller_no > ctrl_no)
+			q->controller_no--;
+	}
 	if (ctrl_stack.nr_controllers == 0) {
 		PE_AddController(-1);
-	} else {
+	} else if (ctrl_stack.active >= ctrl_stack.nr_controllers) {
 		ctrl_stack.active = ctrl_stack.nr_controllers - 1;
 	}
 }

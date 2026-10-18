@@ -395,6 +395,21 @@ static void PartsEngine_ClearBackScene(void)
 
 static void PartsEngine_PreLink(void);
 
+/*
+ * Controller index/ID conversions (Rance 03's multi-controller interface).
+ * Layer ids ARE stack indices in this implementation (see the PartsFunc
+ * GetLayerIndex/GetLayerID cases), so both conversions are the identity.
+ */
+static int PE_GetControllerIndex(int controller_id)
+{
+	return controller_id;
+}
+
+static int PE_GetControllerID(int controller_index)
+{
+	return controller_index;
+}
+
 HLL_LIBRARY(PartsEngine,
 	    HLL_EXPORT(_PreLink, PartsEngine_PreLink),
 	    // for versions without PartsEngine.Init
@@ -577,6 +592,12 @@ HLL_LIBRARY(PartsEngine,
 	    HLL_EXPORT(IsExist, PE_IsExist),
 	    HLL_EXPORT(AddController, PE_AddController),
 	    HLL_EXPORT(RemoveController, PE_RemoveController),
+	    HLL_EXPORT(SetActiveController, PE_set_active_controller),
+	    HLL_EXPORT(GetActiveController, PE_get_active_controller),
+	    HLL_EXPORT(GetControllerIndex, PE_GetControllerIndex),
+	    HLL_EXPORT(GetControllerID, PE_GetControllerID),
+	    HLL_EXPORT(GetControllerLength, PE_get_nr_controllers),
+	    HLL_EXPORT(GetSystemOverlayController, PE_get_system_controller),
 	    HLL_EXPORT(UpdateComponent, PartsEngine_Update),
 	    HLL_EXPORT(Parts_SetThumbnailReductionSize, PE_SetThumbnailReductionSize),
 	    HLL_EXPORT(Parts_SetThumbnailMode, PE_SetThumbnailMode),
