@@ -8,6 +8,8 @@
  * (at your option) any later version.
  */
 
+#include <string.h>
+
 #include "system4.h"
 #include "xsystem4.h"
 #include "system4/string.h"
