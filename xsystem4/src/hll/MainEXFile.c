@@ -19,6 +19,7 @@
 
 #include "system4/ain.h"
 #include "system4/ex.h"
+#include "system4/hashtable.h"
 #include "system4/string.h"
 
 #include "xsystem4.h"
@@ -738,28 +739,25 @@ static int ex_name_handle_silent(struct string *name)
 
 // Warn once per distinct missing name; a wrong lookup is a real data error,
 // but the name may also be probed legitimately by the Exists family.
+//
+// The set has to grow: Rance 03 probes 332 absent keys, and a bounded table
+// silently degraded into logging every single occurrence -- 1500+ identical
+// lines per second, which pushed everything else out of the logcat ring and
+// made the config screen's click path unreadable.
 static int ex_name_handle(struct string *name)
 {
-	static char *warned[64];
-	static unsigned nr_warned = 0;
+	static struct hash_table *warned;
 	int handle = ex_name_handle_silent(name);
 	if (handle)
 		return handle;
-	for (unsigned i = 0; i < nr_warned; i++) {
-		if (warned[i] && !strcmp(warned[i], name->text))
-			return 0;
-	}
+	if (!warned)
+		warned = ht_create(512);
+	if (ht_get(warned, name->text, NULL))
+		return 0;
+	ht_put(warned, name->text, (void *)1);
 	char *u = text2utf(name->text, strlen(name->text));
 	WARNING("MainEXFile: name not found: %s", u);
 	free(u);
-	if (nr_warned >= sizeof(warned) / sizeof(warned[0])) {
-		// The table is full: keep quiet instead of logging every occurrence.
-		// Rance 03 probes more than 64 absent keys, and the per-frame repeats
-		// filled logcat with 1800+ lines in a single millisecond, pushing the
-		// VM heartbeat out of the buffer and blinding every later diagnosis.
-		return 0;
-	}
-	warned[nr_warned++] = strdup(name->text);
 	return 0;
 }
 
