@@ -295,37 +295,68 @@ static void trace_hll_call(struct ain_library *lib, struct ain_hll_function *f,
 #endif /* TRACE_HLL */
 
 /*
- * HLL functions dereference their string arguments without checking, so a null
- * one doesn't fail here -- it fails hundreds of instructions later, inside a
- * library function whose name no longer tells you which script value came in
- * empty. Say so at the boundary, while the call, the argument and the heap
- * slot are all still named.
+ * A string argument that doesn't name a live string slot doesn't fail here --
+ * it fails hundreds of instructions later, inside a library function whose
+ * name no longer tells you which script value came in bad. heap_alloc_slot()
+ * only fills in ref/seq/type, so a slot that was never assigned still carries
+ * whatever the realloc'd memory happened to hold: a null pointer is only one
+ * of the shapes this takes. Report it at the boundary instead, while the call,
+ * the argument and the heap slot are all still named.
  */
-static struct string *null_string_arg(int libno, struct ain_hll_function *f,
-				      int argno, int slot)
+static bool string_slot_ok(int slot)
+{
+	return heap_index_valid(slot) && heap[slot].type == VM_STRING
+		&& heap[slot].ref > 0 && heap[slot].s;
+}
+
+static void report_bad_string_arg(int libno, struct ain_hll_function *f,
+				  int argno, int slot)
 {
 	static int logged = 0;
+	if (logged++ >= 12)
+		return;
+
 	const char *caller = "?";
 	int cfno = call_stack_ptr > 0 ? call_stack[call_stack_ptr - 1].fno : -1;
 	if (cfno >= 0 && cfno < ain->nr_functions)
 		caller = ain->functions[cfno].name;
-	if (logged++ < 8) {
-		char raw[240];
-		int used = 0;
-		// Arguments 0..argno are still on the stack, so a shifted call
-		// shows up here as slots that aren't strings at all.
-		for (int a = 0; a <= argno && a < 6; a++) {
-			int s = stack[stack_ptr + a].i;
-			used += snprintf(raw + used, sizeof(raw) - used, " [%d]=%d{%d}",
-					 a, s, heap_index_valid(s) ? (int)heap[s].type : -9);
-		}
-		WARNING("NULL string argument: %s.%s(%s) #%d from %s%s",
+
+	// Arguments 0..argno are still on the stack, so a shifted call shows up
+	// here as an argument block that doesn't line up.
+	char raw[200];
+	int used = 0;
+	for (int a = 0; a <= argno && a < 6; a++)
+		used += snprintf(raw + used, sizeof(raw) - used, " [%d]=%d", a,
+				 stack[stack_ptr + a].i);
+
+	if (heap_index_valid(slot))
+		WARNING("BAD string argument: %s.%s(%s) #%d from %s%s | "
+			"heap[%d]{type=%d ref=%d seq=%u s=%p} heap_size=%zu",
 			ain->libraries[libno].name, f->name,
-			f->arguments[argno].name, argno, caller, raw);
+			f->arguments[argno].name, argno, caller, raw,
+			slot, (int)heap[slot].type, heap[slot].ref,
+			heap[slot].seq, (void*)heap[slot].s, heap_size);
+	else
+		WARNING("BAD string argument: %s.%s(%s) #%d from %s%s | "
+			"slot %d outside heap_size=%zu",
+			ain->libraries[libno].name, f->name,
+			f->arguments[argno].name, argno, caller, raw,
+			slot, heap_size);
+
+	// The caller's own variables: if the value that came in is already junk
+	// here, the producer is upstream of this call, not in the marshalling.
+	int pslot = cfno >= 0 && call_stack_ptr > 0 ? call_stack[call_stack_ptr - 1].page_slot : -1;
+	if (cfno >= 0 && cfno < ain->nr_functions && heap_index_valid(pslot)
+			&& heap[pslot].type == VM_PAGE && heap[pslot].page) {
+		struct page *p = heap[pslot].page;
+		struct ain_function *af = &ain->functions[cfno];
+		int shown = af->nr_vars < 8 ? af->nr_vars : 8;
+		for (int v = 0; v < shown && used < (int)sizeof(raw) - 40; v++)
+			used += snprintf(raw + used, sizeof(raw) - used, " %s=%d(t%d)",
+					 af->vars[v].name, p->values[v].i,
+					 (int)af->vars[v].type.data);
+		WARNING("  caller %s locals:%s", caller, raw);
 	}
-	if (!config.stub_unimplemented_hll)
-		VM_ERROR("null string argument to %s.%s", ain->libraries[libno].name, f->name);
-	return string_ref(&EMPTY_STRING);
 }
 
 void hll_call(int libno, int fno)
@@ -361,23 +392,38 @@ void hll_call(int libno, int fno)
 		case AIN_STRING: {
 			stack_ptr--;
 			int slot = stack[stack_ptr].i;
-			if (!heap_index_valid(slot))
-				VM_ERROR("bad heap slot %d for %s.%s argument #%d",
-					 slot, ain->libraries[libno].name, f->name, i);
-			if (!heap[slot].s)
-				heap[slot].s = null_string_arg(libno, f, i, slot);
+			if (!string_slot_ok(slot)) {
+				report_bad_string_arg(libno, f, i, slot);
+				if (!config.stub_unimplemented_hll)
+					VM_ERROR("bad string slot %d for %s.%s argument #%d",
+						 slot, ain->libraries[libno].name, f->name, i);
+				// Hand the callee an empty string without writing into
+				// the slot: it may belong to something else entirely.
+				heap_ptrs[i] = string_ref(&EMPTY_STRING);
+				ptrs[i] = &heap_ptrs[i];
+				args[i] = &ptrs[i];
+				break;
+			}
 			args[i] = &heap[slot].s;
 			break;
 		}
 		case AIN_REF_STRING: {
 			stack_ptr--;
 			heap_slots[i] = stack[stack_ptr].i;
-			if (!heap_index_valid(heap_slots[i]))
-				VM_ERROR("bad heap slot %d for %s.%s argument #%d",
-					 heap_slots[i], ain->libraries[libno].name, f->name, i);
+			if (!string_slot_ok(heap_slots[i])) {
+				report_bad_string_arg(libno, f, i, heap_slots[i]);
+				if (!config.stub_unimplemented_hll)
+					VM_ERROR("bad string slot %d for %s.%s argument #%d",
+						 heap_slots[i], ain->libraries[libno].name, f->name, i);
+				// Hand the callee an empty string without writing into
+				// the slot: it may belong to something else entirely.
+				heap_slots[i] = -1;
+				heap_ptrs[i] = string_ref(&EMPTY_STRING);
+				ptrs[i] = &heap_ptrs[i];
+				args[i] = &ptrs[i];
+				break;
+			}
 			heap_ptrs[i] = heap[heap_slots[i]].s;
-			if (!heap_ptrs[i])
-				heap_ptrs[i] = null_string_arg(libno, f, i, heap_slots[i]);
 			ptrs[i] = &heap_ptrs[i];
 			args[i] = &ptrs[i];
 			break;
@@ -431,7 +477,10 @@ void hll_call(int libno, int fno)
 			j++;
 			break;
 		case AIN_REF_STRING:
-			heap[heap_slots[i]].s = heap_ptrs[i];
+			// -1 marks a slot we refused to trust; writing back through it
+			// would corrupt whatever it really belongs to.
+			if (heap_slots[i] >= 0)
+				heap[heap_slots[i]].s = heap_ptrs[i];
 			break;
 		case AIN_REF_STRUCT:
 		case AIN_REF_ARRAY_TYPE:
