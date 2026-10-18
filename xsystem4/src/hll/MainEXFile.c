@@ -14,20 +14,26 @@
  * along with this program; if not, see <http://gnu.org/licenses/>.
  */
 
+#include <stdlib.h>
 #include <string.h>
 
+#include "system4/ain.h"
 #include "system4/ex.h"
 #include "system4/string.h"
 
 #include "xsystem4.h"
 #include "hll.h"
+#include "utfgbk.h"
 
 #include "system4/utfsjis.h"
 
 // TODO: Later versions of this library have a different interface, but use the
 //       same function names. Will need to handle this somehow...
 //       Probably best to have separate implementations and choose the correct
-//       one at startup.
+//       one at startup. (Implemented below for Rance 03: _PreLink checks the
+//       .ain declaration and swaps in name-keyed wrappers.)
+
+static void MainEXFile_PreLink(void);
 
 static struct ex *ex;
 static struct ex_value **handles = NULL;
@@ -664,6 +670,7 @@ static bool MainEXFile_GetEXName(struct string *tree_path, int index, struct str
 }
 
 HLL_LIBRARY(MainEXFile,
+	    HLL_EXPORT(_PreLink, MainEXFile_PreLink),
 	    HLL_EXPORT(_ModuleInit, MainEXFile_ModuleInit),
 	    HLL_EXPORT(_ModuleFini, MainEXFile_ModuleFini),
 	    HLL_EXPORT(ReloadDebugEXFile, MainEXFile_ReloadDebugEXFile),
@@ -711,3 +718,126 @@ HLL_LIBRARY(MainEXFile,
 	    HLL_EXPORT(GetEXNameCount, MainEXFile_GetEXNameCount),
 	    HLL_EXPORT(GetNodeName, MainEXFile_GetNodeName),
 	    HLL_EXPORT(GetEXName, MainEXFile_GetEXName));
+
+/*
+ * Name-keyed interface (Rance 03 and later).
+ *
+ * These games declare the same MainEXFile function names with every lookup
+ * taking the block name (string) directly; the Handle/AHandle family doesn't
+ * exist at all. Since argument marshalling follows the .ain declaration, the
+ * handle-based implementations above receive the name string in an int
+ * parameter: the value is out of range, handle_to_table() returns NULL, and
+ * every lookup silently yields 0/false (Rance 03's g_player stayed empty this
+ * way). The wrappers below resolve the name to a handle and delegate.
+ */
+static int ex_name_handle_silent(struct string *name)
+{
+	struct ex_value *v = ex_get(ex, name->text);
+	return v ? v->id : 0;
+}
+
+// Warn once per distinct missing name; a wrong lookup is a real data error,
+// but the name may also be probed legitimately by the Exists family.
+static int ex_name_handle(struct string *name)
+{
+	static char *warned[64];
+	static unsigned nr_warned = 0;
+	int handle = ex_name_handle_silent(name);
+	if (handle)
+		return handle;
+	for (unsigned i = 0; i < nr_warned; i++) {
+		if (warned[i] && !strcmp(warned[i], name->text))
+			return 0;
+	}
+	char *u = text2utf(name->text, strlen(name->text));
+	WARNING("MainEXFile: name not found: %s", u);
+	free(u);
+	if (nr_warned < 64)
+		warned[nr_warned++] = strdup(name->text);
+	return 0;
+}
+
+static int MainEXFile_Row_name(struct string *name) { return MainEXFile_Row(ex_name_handle(name)); }
+static int MainEXFile_Col_name(struct string *name) { return MainEXFile_Col(ex_name_handle(name)); }
+static int MainEXFile_Type_name(struct string *name) { return MainEXFile_Type(ex_name_handle(name)); }
+static int MainEXFile_AType_name(struct string *name, int index) { return MainEXFile_AType(ex_name_handle(name), index); }
+static int MainEXFile_A2Type_name(struct string *name, int row, int col) { return MainEXFile_A2Type(ex_name_handle(name), row, col); }
+static int MainEXFile_IA2Type_name(struct string *name, int key, struct string *format_name) { return MainEXFile_IA2Type(ex_name_handle(name), key, format_name); }
+static int MainEXFile_SA2Type_name(struct string *name, struct string *key, struct string *format_name) { return MainEXFile_SA2Type(ex_name_handle(name), key, format_name); }
+static int MainEXFile_RA2Type_name(struct string *name, int row, struct string *format_name) { return MainEXFile_RA2Type(ex_name_handle(name), row, format_name); }
+static bool MainEXFile_Exists_name(struct string *name) { return MainEXFile_Exists(ex_name_handle_silent(name)); }
+static bool MainEXFile_AExists_name(struct string *name, int index) { return MainEXFile_AExists(ex_name_handle_silent(name), index); }
+static bool MainEXFile_A2Exists_name(struct string *name, int row, int col) { return MainEXFile_A2Exists(ex_name_handle_silent(name), row, col); }
+static bool MainEXFile_IA2Exists_name(struct string *name, int key, struct string *format_name) { return MainEXFile_IA2Exists(ex_name_handle_silent(name), key, format_name); }
+static bool MainEXFile_SA2Exists_name(struct string *name, struct string *key, struct string *format_name) { return MainEXFile_SA2Exists(ex_name_handle_silent(name), key, format_name); }
+static bool MainEXFile_RA2Exists_name(struct string *name, int row, struct string *format_name) { return MainEXFile_RA2Exists(ex_name_handle_silent(name), row, format_name); }
+static bool MainEXFile_Int_name(struct string *name, int *data) { return MainEXFile_Int(ex_name_handle(name), data); }
+static bool MainEXFile_Float_name(struct string *name, float *data) { return MainEXFile_Float(ex_name_handle(name), data); }
+static bool MainEXFile_String_name(struct string *name, struct string **data) { return MainEXFile_String(ex_name_handle(name), data); }
+static bool MainEXFile_AInt_name(struct string *name, int index, int *data) { return MainEXFile_AInt(ex_name_handle(name), index, data); }
+static bool MainEXFile_AFloat_name(struct string *name, int index, float *data) { return MainEXFile_AFloat(ex_name_handle(name), index, data); }
+static bool MainEXFile_AString_name(struct string *name, int index, struct string **data) { return MainEXFile_AString(ex_name_handle(name), index, data); }
+static bool MainEXFile_A2Int_name(struct string *name, int row, int col, int *data) { return MainEXFile_A2Int(ex_name_handle(name), row, col, data); }
+static bool MainEXFile_A2Float_name(struct string *name, int row, int col, float *data) { return MainEXFile_A2Float(ex_name_handle(name), row, col, data); }
+static bool MainEXFile_A2String_name(struct string *name, int row, int col, struct string **data) { return MainEXFile_A2String(ex_name_handle(name), row, col, data); }
+static int MainEXFile_GetRowAtIntKey_name(struct string *name, int key) { return MainEXFile_GetRowAtIntKey(ex_name_handle(name), key); }
+static int MainEXFile_GetRowAtStringKey_name(struct string *name, struct string *key) { return MainEXFile_GetRowAtStringKey(ex_name_handle(name), key); }
+static bool MainEXFile_IA2Int_name(struct string *name, int key, struct string *format_name, int *data) { return MainEXFile_IA2Int(ex_name_handle(name), key, format_name, data); }
+static bool MainEXFile_IA2Float_name(struct string *name, int key, struct string *format_name, float *data) { return MainEXFile_IA2Float(ex_name_handle(name), key, format_name, data); }
+static bool MainEXFile_IA2String_name(struct string *name, int key, struct string *format_name, struct string **data) { return MainEXFile_IA2String(ex_name_handle(name), key, format_name, data); }
+static bool MainEXFile_SA2Int_name(struct string *name, struct string *key, struct string *format_name, int *data) { return MainEXFile_SA2Int(ex_name_handle(name), key, format_name, data); }
+static bool MainEXFile_SA2Float_name(struct string *name, struct string *key, struct string *format_name, float *data) { return MainEXFile_SA2Float(ex_name_handle(name), key, format_name, data); }
+static bool MainEXFile_SA2String_name(struct string *name, struct string *key, struct string *format_name, struct string **data) { return MainEXFile_SA2String(ex_name_handle(name), key, format_name, data); }
+static bool MainEXFile_RA2Int_name(struct string *name, int row, struct string *format_name, int *data) { return MainEXFile_RA2Int(ex_name_handle(name), row, format_name, data); }
+static bool MainEXFile_RA2Float_name(struct string *name, int row, struct string *format_name, float *data) { return MainEXFile_RA2Float(ex_name_handle(name), row, format_name, data); }
+static bool MainEXFile_RA2String_name(struct string *name, int row, struct string *format_name, struct string **data) { return MainEXFile_RA2String(ex_name_handle(name), row, format_name, data); }
+
+static void MainEXFile_PreLink(void)
+{
+	int libno = ain_get_library(ain, "MainEXFile");
+	if (libno < 0)
+		return;
+	int fno = ain_get_library_function(ain, libno, "Row");
+	if (fno < 0)
+		return;
+	struct ain_hll_function *row = &ain->libraries[libno].functions[fno];
+	if (row->nr_arguments < 1 || row->arguments[0].type.data != AIN_STRING)
+		return;
+
+#define REPLACE_BY_NAME(fn) static_library_replace(&lib_MainEXFile, #fn, MainEXFile_##fn##_name)
+	REPLACE_BY_NAME(Row);
+	REPLACE_BY_NAME(Col);
+	REPLACE_BY_NAME(Type);
+	REPLACE_BY_NAME(AType);
+	REPLACE_BY_NAME(A2Type);
+	REPLACE_BY_NAME(IA2Type);
+	REPLACE_BY_NAME(SA2Type);
+	REPLACE_BY_NAME(RA2Type);
+	REPLACE_BY_NAME(Exists);
+	REPLACE_BY_NAME(AExists);
+	REPLACE_BY_NAME(A2Exists);
+	REPLACE_BY_NAME(IA2Exists);
+	REPLACE_BY_NAME(SA2Exists);
+	REPLACE_BY_NAME(RA2Exists);
+	REPLACE_BY_NAME(Int);
+	REPLACE_BY_NAME(Float);
+	REPLACE_BY_NAME(String);
+	REPLACE_BY_NAME(AInt);
+	REPLACE_BY_NAME(AFloat);
+	REPLACE_BY_NAME(AString);
+	REPLACE_BY_NAME(A2Int);
+	REPLACE_BY_NAME(A2Float);
+	REPLACE_BY_NAME(A2String);
+	REPLACE_BY_NAME(GetRowAtIntKey);
+	REPLACE_BY_NAME(GetRowAtStringKey);
+	REPLACE_BY_NAME(IA2Int);
+	REPLACE_BY_NAME(IA2Float);
+	REPLACE_BY_NAME(IA2String);
+	REPLACE_BY_NAME(SA2Int);
+	REPLACE_BY_NAME(SA2Float);
+	REPLACE_BY_NAME(SA2String);
+	REPLACE_BY_NAME(RA2Int);
+	REPLACE_BY_NAME(RA2Float);
+	REPLACE_BY_NAME(RA2String);
+#undef REPLACE_BY_NAME
+}
