@@ -15,14 +15,22 @@
  */
 
 #include <assert.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 #include "system4/ain.h"
+#include "system4/archive.h"
+#include "system4/ex.h"
 #include "system4/string.h"
 
+#include "asset_manager.h"
 #include "vm/heap.h"
 #include "vm/page.h"
 #include "parts.h"
 #include "hll.h"
+#include "parts_activity_names.h"
+#include "xsystem4.h"
 
 static void PartsEngine_ModuleInit(void)
 {
@@ -410,6 +418,830 @@ static int PE_GetControllerID(int controller_index)
 	return controller_index;
 }
 
+/*
+ * Rance 03 activity system ("CASPartsActivity").
+ *
+ * Activities are name-keyed registries of parts.  The definitions live in
+ * .pactex files (an .ex container with an アクティビティ tree and an optional
+ * 終了キー list) inside Rance03Pact.afa; ReadActivityFile parses one and
+ * creates the real parts, the rest of the family is bookkeeping over the
+ * registry.  The game drives everything else (layers, click wiring, the
+ * event pump) from script.
+ *
+ * Interface note: like MainEXFile (see 08a2084) and KiwiSoundEngine
+ * (915c328), this is the name-keyed generation of the API.  Upstream only
+ * ever saw the older binary generation (ReadActivityBinary), which is why
+ * these were stubs.
+ */
+#define PE_ACTIVITY_MAX 16
+// keep in sync with ACT_NR_STATES in parts/parts_internal.h (private header)
+#define ACT_NR_STATES 3
+
+struct activity_part {
+	struct string *name;
+	int parts_no;
+};
+
+struct activity_intent {
+	struct string *parts_name;  // string_ref'd
+	int type;
+	struct string **dests;      // string_ref'd
+	int nr_dests;
+};
+
+struct pe_activity {
+	struct string *name;        // string_ref'd
+	struct activity_part *parts;
+	int nr_parts;
+	struct string **close_parts;
+	int nr_close_parts;
+	struct activity_intent *intents;
+	int nr_intents;
+	int *end_keys;
+	int nr_end_keys;
+};
+
+static struct pe_activity activities[PE_ACTIVITY_MAX];
+
+static struct pe_activity *activity_find(const char *name)
+{
+	for (int i = 0; i < PE_ACTIVITY_MAX; i++) {
+		if (activities[i].name && !strcmp(activities[i].name->text, name))
+			return &activities[i];
+	}
+	return NULL;
+}
+
+static struct pe_activity *activity_create(struct string *name)
+{
+	if (activity_find(name->text))
+		return NULL;
+	for (int i = 0; i < PE_ACTIVITY_MAX; i++) {
+		struct pe_activity *a = &activities[i];
+		if (a->name)
+			continue;
+		memset(a, 0, sizeof(*a));
+		a->name = string_ref(name);
+		return a;
+	}
+	WARNING("activity table full");
+	return NULL;
+}
+
+static void activity_intent_free(struct activity_intent *it)
+{
+	free_string(it->parts_name);
+	for (int i = 0; i < it->nr_dests; i++)
+		free_string(it->dests[i]);
+	free(it->dests);
+}
+
+static void activity_free(struct pe_activity *a)
+{
+	for (int i = 0; i < a->nr_parts; i++)
+		free_string(a->parts[i].name);
+	free(a->parts);
+	for (int i = 0; i < a->nr_close_parts; i++)
+		free_string(a->close_parts[i]);
+	free(a->close_parts);
+	for (int i = 0; i < a->nr_intents; i++)
+		activity_intent_free(&a->intents[i]);
+	free(a->intents);
+	free(a->end_keys);
+	free_string(a->name);
+	memset(a, 0, sizeof(*a));
+}
+
+static struct activity_intent *activity_intent_get(struct pe_activity *a, struct string *parts_name)
+{
+	for (int i = 0; i < a->nr_intents; i++) {
+		if (!strcmp(a->intents[i].parts_name->text, parts_name->text))
+			return &a->intents[i];
+	}
+	a->intents = realloc(a->intents, (a->nr_intents+1) * sizeof(struct activity_intent));
+	struct activity_intent *it = &a->intents[a->nr_intents++];
+	it->parts_name = string_ref(parts_name);
+	it->type = 0;
+	it->dests = NULL;
+	it->nr_dests = 0;
+	return it;
+}
+
+static struct activity_part *activity_part_by_name(struct pe_activity *a, const char *parts_name)
+{
+	for (int i = 0; i < a->nr_parts; i++) {
+		if (!strcmp(a->parts[i].name->text, parts_name))
+			return &a->parts[i];
+	}
+	return NULL;
+}
+
+static struct activity_part *activity_part_by_number(struct pe_activity *a, int parts_no)
+{
+	for (int i = 0; i < a->nr_parts; i++) {
+		if (a->parts[i].parts_no == parts_no)
+			return &a->parts[i];
+	}
+	return NULL;
+}
+
+static void activity_add_part(struct pe_activity *a, struct string *name, int parts_no)
+{
+	a->parts = realloc(a->parts, (a->nr_parts+1) * sizeof(struct activity_part));
+	a->parts[a->nr_parts].name = string_ref(name);
+	a->parts[a->nr_parts].parts_no = parts_no;
+	a->nr_parts++;
+}
+
+static void activity_add_end_key(struct pe_activity *a, int key)
+{
+	for (int i = 0; i < a->nr_end_keys; i++) {
+		if (a->end_keys[i] == key)
+			return;
+	}
+	a->end_keys = realloc(a->end_keys, (a->nr_end_keys+1) * sizeof(int));
+	a->end_keys[a->nr_end_keys++] = key;
+}
+
+// --- .pactex loader ---
+
+static struct ex_tree *act_tree_child(struct ex_tree *t, const char *name)
+{
+	if (!t || t->is_leaf)
+		return NULL;
+	for (uint32_t i = 0; i < t->nr_children; i++) {
+		if (!strcmp(t->children[i].name->text, name))
+			return &t->children[i];
+	}
+	return NULL;
+}
+
+static struct ex_value *act_leaf(struct ex_tree *t, const char *name)
+{
+	struct ex_tree *c = act_tree_child(t, name);
+	return c && c->is_leaf ? &c->leaf.value : NULL;
+}
+
+static int act_int(struct ex_tree *t, const char *name, int dflt)
+{
+	struct ex_value *v = act_leaf(t, name);
+	return v && v->type == EX_INT ? v->i : dflt;
+}
+
+static const char *act_str(struct ex_tree *t, const char *name)
+{
+	struct ex_value *v = act_leaf(t, name);
+	return v && v->type == EX_STRING ? v->s->text : "";
+}
+
+static float act_list_num(struct ex_value *v, int i, float dflt)
+{
+	if (!v || v->type != EX_LIST || i >= (int)v->list->nr_items)
+		return dflt;
+	struct ex_value *item = &v->list->items[i].value;
+	if (item->type == EX_INT)
+		return item->i;
+	if (item->type == EX_FLOAT)
+		return item->f;
+	return dflt;
+}
+
+// The tab/button CGs ship as one archive entry per state, suffixed
+// ／通常, ／オン, ／ダウン (and ／無効 for the disabled variant).  The
+// .pactex only names the base, so resolve the suffix per state and fall
+// back to the base name when a variant is missing.
+static void activity_set_button_cg(int parts_no, struct string *base, bool enabled)
+{
+	static const char *suffix[ACT_NR_STATES] = { ACT_N_SFX_0, ACT_N_SFX_1, ACT_N_SFX_2 };
+	for (int st = 0; st < ACT_NR_STATES; st++) {
+		struct string *name = string_dup(base);
+		string_append_cstr(&name, suffix[st], strlen(suffix[st]));
+		if (enabled && asset_exists_by_name(ASSET_CG, name->text, NULL)) {
+			PE_SetPartsCG(parts_no, name, 0, st+1);
+			free_string(name);
+			continue;
+		}
+		free_string(name);
+		if (!enabled && st == 0) {
+			// disabled buttons use the ／無効 variant for every state
+			struct string *dis = string_dup(base);
+			string_append_cstr(&dis, ACT_N_SFX_OFF, strlen(ACT_N_SFX_OFF));
+			if (asset_exists_by_name(ASSET_CG, dis->text, NULL)) {
+				for (int st2 = 0; st2 < ACT_NR_STATES; st2++)
+					PE_SetPartsCG(parts_no, dis, 0, st2+1);
+				free_string(dis);
+				return;
+			}
+			free_string(dis);
+		}
+		PE_SetPartsCG(parts_no, base, 0, st+1);
+	}
+}
+
+// Track which unhandled .pactex fields have been complained about already.
+static void act_warn_once(const char *field)
+{
+	static char warned[512];
+	if (!field)
+		return;
+	for (const char *w = warned; *w; w += strlen(w)+1) {
+		if (!strcmp(w, field))
+			return;
+	}
+	size_t off = strlen(warned);
+	if (off + strlen(field) + 1 < sizeof(warned)) {
+		strcpy(warned + off, field);
+		warned[off + strlen(field)] = '\0';
+	}
+	WARNING("activity file: unhandled field %s", field);
+}
+
+static void act_warn_once_type(int type)
+{
+	char label[32];
+	snprintf(label, sizeof(label), "<part type %d>", type);
+	act_warn_once(label);
+}
+
+static void activity_apply_state(int parts_no, struct ex_tree *state, int pe_state)
+{
+	struct ex_value *cg = act_leaf(state, ACT_N_CG_NAME);
+	if (cg && cg->type == EX_STRING && *(cg->s->text)) {
+		PE_SetPartsCG(parts_no, cg->s, act_int(state, ACT_N_DEFORM, 0), pe_state);
+		struct ex_value *sa = act_leaf(state, ACT_N_SURFACE);
+		if (sa && sa->type == EX_LIST && (act_list_num(sa, 0, 0) || act_list_num(sa, 1, 0)
+					|| act_list_num(sa, 2, 0) || act_list_num(sa, 3, 0)))
+			PE_SetPartsCGSurfaceArea(parts_no, act_list_num(sa,0,0), act_list_num(sa,1,0),
+					act_list_num(sa,2,0), act_list_num(sa,3,0), pe_state);
+	}
+	struct ex_value *text = act_leaf(state, ACT_N_TEXT);
+	if (text && text->type == EX_STRING && *(text->s->text)) {
+		PE_SetText(parts_no, text->s, pe_state);
+		int font_type = act_int(state, ACT_N_FONT_TYPE, 0);
+		if (font_type)
+			PE_SetPartsFontType(parts_no, font_type, pe_state);
+		int font_size = act_int(state, ACT_N_FONT_SIZE, 0);
+		if (font_size)
+			PE_SetPartsFontSize(parts_no, font_size, pe_state);
+		struct ex_value *fc = act_leaf(state, ACT_N_FONT_COLOR);
+		if (fc)
+			PE_SetPartsFontColor(parts_no, act_list_num(fc,0,0), act_list_num(fc,1,0),
+					act_list_num(fc,2,0), pe_state);
+		struct ex_value *ec = act_leaf(state, ACT_N_FONT_EDGE_COLOR);
+		if (ec)
+			PE_SetPartsFontEdgeColor(parts_no, act_list_num(ec,0,0), act_list_num(ec,1,0),
+					act_list_num(ec,2,0), pe_state);
+		int char_space = act_int(state, ACT_N_CHAR_SPACE, act_int(state, ACT_N_CHAR_SPACE2, 0));
+		if (char_space)
+			PE_SetTextCharSpace(parts_no, char_space, pe_state);
+		int line_space = act_int(state, ACT_N_LINE_SPACE, 0);
+		if (line_space)
+			PE_SetTextLineSpace(parts_no, line_space, pe_state);
+	}
+}
+
+static int activity_walk_part(struct pe_activity *act, struct ex_tree *part, int parent_no);
+
+static void activity_walk_children(struct pe_activity *act, struct ex_tree *part, int parts_no)
+{
+	struct ex_tree *children = act_tree_child(part, ACT_N_CHILDREN);
+	if (!children || children->is_leaf)
+		return;
+	for (uint32_t i = 0; i < children->nr_children; i++) {
+		struct ex_tree *child = &children->children[i];
+		if (child->is_leaf)
+			continue;
+		int child_no = activity_walk_part(act, child, parts_no);
+		if (child_no >= 0)
+			PE_SetParentPartsNumber(child_no, parts_no);
+	}
+}
+
+static int activity_walk_part(struct pe_activity *act, struct ex_tree *part, int parent_no)
+{
+	int no = PE_GetFreeNumber();
+	activity_add_part(act, part->name, no);
+
+	// common properties
+	struct ex_value *pos = act_leaf(part, ACT_N_POS);
+	if (pos && pos->type == EX_LIST) {
+		PE_SetPos(no, act_list_num(pos, 0, 0), act_list_num(pos, 1, 0));
+		PE_SetZ(no, act_list_num(pos, 2, 1));
+	}
+	int origin_mode = act_int(part, ACT_N_ORIGIN, 0);
+	if (origin_mode)
+		PE_SetPartsOriginPosMode(no, origin_mode);
+	if (act_int(part, ACT_N_SHOW, 1))
+		PE_SetShow(no, true);
+	PE_SetPartsMessageWindowShowLink(no, act_int(part, ACT_N_MSG_LINK, 0));
+	PE_SetAlpha(no, act_int(part, ACT_N_ALPHA, 255));
+	struct ex_value *add = act_leaf(part, ACT_N_ADD_COLOR);
+	if (add)
+		PE_SetAddColor(no, act_list_num(add,0,0), act_list_num(add,1,0), act_list_num(add,2,0));
+	struct ex_value *mul = act_leaf(part, ACT_N_MUL_COLOR);
+	if (mul)
+		PE_SetMultiplyColor(no, act_list_num(mul,0,255), act_list_num(mul,1,255), act_list_num(mul,2,255));
+	PE_SetPartsDrawFilter(no, act_int(part, ACT_N_DRAW_FILTER, 0));
+	struct ex_value *mag = act_leaf(part, ACT_N_MAG);
+	if (mag) {
+		PE_SetPartsMagX(no, act_list_num(mag, 0, 1));
+		PE_SetPartsMagY(no, act_list_num(mag, 1, 1));
+	}
+	struct ex_value *rot = act_leaf(part, ACT_N_ROT);
+	if (rot) {
+		PE_SetPartsRotateX(no, act_list_num(rot, 0, 0));
+		PE_SetPartsRotateY(no, act_list_num(rot, 1, 0));
+		PE_SetPartsRotateZ(no, act_list_num(rot, 2, 0));
+	}
+	struct ex_value *margin = act_leaf(part, ACT_N_MARGIN);
+	if (margin)
+		PE_SetComponentMargin(no, act_list_num(margin,0,0), act_list_num(margin,1,0),
+				act_list_num(margin,2,0), act_list_num(margin,3,0));
+	struct ex_value *clip = act_leaf(part, ACT_N_ALPHA_CLIP);
+	if (clip && clip->type == EX_STRING && *(clip->s->text)) {
+		struct activity_part *target = activity_part_by_name(act, clip->s->text);
+		if (target)
+			PE_SetPartsAlphaClipperPartsNumber(no, target->parts_no);
+	}
+	struct ex_value *link = act_leaf(part, ACT_N_ONCURSOR_LINK);
+	if (link && link->type == EX_STRING && *(link->s->text)) {
+		struct activity_part *target = activity_part_by_name(act, link->s->text);
+		if (target)
+			PE_SetOnCursorShowLinkPartsNumber(no, target->parts_no);
+	}
+	if (*act_str(part, ACT_N_SCROLL_X))
+		act_warn_once(ACT_N_SCROLL_X);
+	if (*act_str(part, ACT_N_SCROLL_Y))
+		act_warn_once(ACT_N_SCROLL_Y);
+	if (*act_str(part, ACT_N_SCROLL_A))
+		act_warn_once(ACT_N_SCROLL_A);
+	if (*act_str(part, ACT_N_CHECKBOX_LINK))
+		act_warn_once(ACT_N_CHECKBOX_LINK);
+	int speedup = act_int(part, ACT_N_SPEEDUP, 0);
+	if (speedup)
+		PE_SetSpeedupRateByMessageSkip(no, speedup);
+	PE_SetClickable(no, act_int(part, ACT_N_CLICKABLE, 0));
+	PE_SetPassCursor(no, act_int(part, ACT_N_PASS_CURSOR, 0));
+	PE_SetDrag(no, act_int(part, ACT_N_DRAG, 0));
+	PE_SetPartsPixelDecide(no, act_int(part, ACT_N_PIXEL_DECIDE, 0));
+	if (act_int(part, ACT_N_RATE_POS, 0))
+		act_warn_once(ACT_N_RATE_POS);
+	if (*act_str(part, ACT_N_SE_ON))
+		act_warn_once(ACT_N_SE_ON);
+	if (*act_str(part, ACT_N_SE_CLICK))
+		act_warn_once(ACT_N_SE_CLICK);
+	if (act_int(part, ACT_N_CLOSED, 0))
+		PE_SetShow(no, false);
+
+	// click-through intent data (遷移先/遷移方法 at part level)
+	struct ex_value *trans = act_leaf(part, ACT_N_TRANS_DST);
+	if (trans && trans->type == EX_LIST) {
+		struct activity_intent *it = activity_intent_get(act, part->name);
+		it->type = act_int(part, ACT_N_TRANS_TYPE, it->type);
+		for (uint32_t i = 0; i < trans->list->nr_items; i++) {
+			struct ex_value *d = &trans->list->items[i].value;
+			if (d->type != EX_STRING || !*(d->s->text))
+				continue;
+			it->dests = realloc(it->dests, (it->nr_dests+1) * sizeof(struct string*));
+			it->dests[it->nr_dests++] = string_ref(d->s);
+		}
+	}
+
+	// type-specific information
+	struct ex_tree *info = act_tree_child(part, ACT_N_TYPE_INFO);
+	if (info && !info->is_leaf) {
+		int type = act_int(info, ACT_N_PART_TYPE, 0);
+		switch (type) {
+		case 8: // layout box
+			PE_SetLayoutBoxLayoutType(no, act_int(info, ACT_N_LAYOUT_TYPE, 0));
+			PE_SetLayoutBoxAlign(no, act_int(info, ACT_N_ALIGN, 0));
+			if (act_int(info, ACT_N_WRAP, 0))
+				PE_SetLayoutBoxReturn(no, true, act_int(info, ACT_N_WRAP_SIZE, 200));
+			{
+				struct ex_value *pad = act_leaf(info, ACT_N_PADDING);
+				if (pad)
+					PE_set_layoutbox_padding(no, act_list_num(pad,0,0), act_list_num(pad,1,0),
+							act_list_num(pad,2,0), act_list_num(pad,3,0));
+			}
+			break;
+		case 0:
+			// plain container or button: a ＣＧ名 here means a button-like
+			// part whose per-state graphics use the ／通常／オン／ダウン
+			// archive naming convention
+			{
+				struct ex_value *bcg = act_leaf(info, ACT_N_CG_NAME);
+				if (bcg && bcg->type == EX_STRING && *(bcg->s->text)) {
+					bool enabled = !act_int(info, ACT_N_ENABLED, 1);
+					activity_set_button_cg(no, bcg->s, enabled);
+					struct ex_value *size = act_leaf(info, ACT_N_SIZE);
+					if (size)
+						PE_SetPartsRectangleDetectionSize(no, act_list_num(size,0,0),
+								act_list_num(size,1,0), 1);
+					struct ex_value *text = act_leaf(info, ACT_N_TEXT);
+					if (text && text->type == EX_STRING && *(text->s->text))
+						PE_SetText(no, text->s, 1);
+				}
+			}
+			break;
+		case 10:
+			// clip container: per-state CGs follow
+			break;
+		default:
+			// checkbox/button widget types the game drives from its own
+			// script classes; nothing to do beyond the common properties
+			act_warn_once_type(type);
+			break;
+		}
+		// explicit per-state definitions (usually under type 10/11 parts)
+		static const char *state_names[ACT_NR_STATES] = { ACT_N_STATE_0, ACT_N_STATE_1, ACT_N_STATE_2 };
+		for (int st = 0; st < ACT_NR_STATES; st++) {
+			struct ex_tree *s = act_tree_child(info, state_names[st]);
+			if (s && !s->is_leaf)
+				activity_apply_state(no, s, st+1);
+		}
+	}
+
+	activity_walk_children(act, part, no);
+	return no;
+}
+
+static bool activity_load_pact(struct pe_activity *act, struct archive_data *data)
+{
+	struct ex *ex = ex_read(data->data, data->size);
+	if (!ex) {
+		WARNING("activity file: ex_read failed for %s", data->name);
+		return false;
+	}
+	struct ex_tree *root = ex_get_tree(ex, ACT_N_ROOT);
+	if (!root || root->is_leaf) {
+		WARNING("activity file: no activity tree in %s", data->name);
+		ex_free(ex);
+		return false;
+	}
+	struct ex_tree *root_parts = act_tree_child(root, ACT_N_ROOT_PARTS);
+	if (!root_parts || root_parts->is_leaf) {
+		WARNING("activity file: no root parts in %s", data->name);
+		ex_free(ex);
+		return false;
+	}
+	int root_no = activity_walk_part(act, root_parts, -1);
+	(void)root_no;
+	struct ex_list *keys = ex_get_list(ex, ACT_N_END_KEYS);
+	if (keys) {
+		for (uint32_t i = 0; i < keys->nr_items; i++) {
+			if (keys->items[i].value.type == EX_INT)
+				activity_add_end_key(act, keys->items[i].value.i);
+		}
+	}
+	ex_free(ex);
+	return true;
+}
+
+// Activity files are looked up in the Pact archive by basename, so the game's
+// ".pact" queries match the archive's ".pactex" entries without any rewriting.
+static bool PartsEngine_IsExistActivityFile(struct string *filename)
+{
+	return asset_exists_by_name(ASSET_PACT, filename->text, NULL);
+}
+
+static bool PartsEngine_ReadActivityFile(struct string *name, struct string *filename)
+{
+	if (activity_find(name->text)) {
+		WARNING("activity %s already loaded", display_utf0(name->text));
+		return false;
+	}
+	struct pe_activity *act = activity_create(name);
+	if (!act)
+		return false;
+	int id;
+	struct archive_data *data = asset_get_by_name(ASSET_PACT, filename->text, &id);
+	if (!data) {
+		WARNING("activity file not found: %s", display_utf0(filename->text));
+		activity_free(act);
+		return false;
+	}
+	bool ok = activity_load_pact(act, data);
+	archive_free_data(data);
+	if (!ok) {
+		activity_free(act);
+		return false;
+	}
+	return true;
+}
+
+static bool PartsEngine_IsExistActivity(struct string *name)
+{
+	return activity_find(name->text) != NULL;
+}
+
+static bool PartsEngine_CreateActivity(struct string *name)
+{
+	return activity_create(name) != NULL;
+}
+
+static bool PartsEngine_ReleaseActivity(struct string *name, struct page ***erase_list)
+{
+	// The erase list is delegate indexes the game resolves itself after we
+	// report success (SYS_Activity_Release then calls method 1450 with it).
+	(void)erase_list;
+	struct pe_activity *act = activity_find(name->text);
+	if (!act)
+		return false;
+	for (int i = 0; i < act->nr_parts; i++) {
+		if (PE_IsExist(act->parts[i].parts_no))
+			PE_ReleaseParts(act->parts[i].parts_no);
+	}
+	activity_free(act);
+	return true;
+}
+
+// Editor-only paths (CActivityEditor/scene edit); the runtime never re-reads
+// activities written this way because the shipped .pact archives always win.
+static bool PartsEngine_WriteActivityFile(struct string *name, struct string *filename)
+{
+	WARNING("WriteActivityFile(%s) not implemented (editor path)", display_utf0(filename->text));
+	return activity_find(name->text) != NULL;
+}
+
+static bool PartsEngine_SaveActivityEXText(struct string **text, struct string *name)
+{
+	(void)text;
+	(void)name;
+	WARNING("SaveActivityEXText not implemented (editor path)");
+	return false;
+}
+
+static bool PartsEngine_LoadActivityEXText(struct string *name, struct string *text)
+{
+	(void)text;
+	WARNING("LoadActivityEXText(%s) not implemented (editor path)", display_utf0(name->text));
+	return false;
+}
+
+static bool PartsEngine_AddActivityParts(struct string *name, struct string *parts_name, int number)
+{
+	struct pe_activity *act = activity_find(name->text);
+	if (!act || activity_part_by_name(act, parts_name->text))
+		return false;
+	activity_add_part(act, parts_name, number);
+	return true;
+}
+
+static bool PartsEngine_RemoveActivityParts(struct string *name, struct string *parts_name)
+{
+	struct pe_activity *act = activity_find(name->text);
+	if (!act)
+		return false;
+	for (int i = 0; i < act->nr_parts; i++) {
+		if (strcmp(act->parts[i].name->text, parts_name->text))
+			continue;
+		free_string(act->parts[i].name);
+		memmove(&act->parts[i], &act->parts[i+1], (act->nr_parts-i-1) * sizeof(struct activity_part));
+		act->nr_parts--;
+		return true;
+	}
+	return false;
+}
+
+static bool PartsEngine_RemoveAllActivityParts(struct string *name)
+{
+	struct pe_activity *act = activity_find(name->text);
+	if (!act)
+		return false;
+	for (int i = 0; i < act->nr_parts; i++)
+		free_string(act->parts[i].name);
+	act->nr_parts = 0;
+	return true;
+}
+
+static int PartsEngine_NumofActivityParts(struct string *name)
+{
+	struct pe_activity *act = activity_find(name->text);
+	return act ? act->nr_parts : 0;
+}
+
+static bool PartsEngine_GetActivityParts(int index, struct string *name,
+		struct string **parts_name, int *number)
+{
+	struct pe_activity *act = activity_find(name->text);
+	if (!act || index < 0 || index >= act->nr_parts)
+		return false;
+	if (*parts_name)
+		free_string(*parts_name);
+	*parts_name = string_dup(act->parts[index].name);
+	*number = act->parts[index].parts_no;
+	return true;
+}
+
+static bool PartsEngine_IsExistActivityPartsByName(struct string *name, struct string *parts_name)
+{
+	struct pe_activity *act = activity_find(name->text);
+	return act && activity_part_by_name(act, parts_name->text) != NULL;
+}
+
+static bool PartsEngine_IsExistActivityPartsByNumber(struct string *name, int number)
+{
+	struct pe_activity *act = activity_find(name->text);
+	return act && activity_part_by_number(act, number) != NULL;
+}
+
+static int PartsEngine_GetActivityPartsNumber(struct string *name, struct string *parts_name)
+{
+	struct pe_activity *act = activity_find(name->text);
+	struct activity_part *part = act ? activity_part_by_name(act, parts_name->text) : NULL;
+	return part ? part->parts_no : -1;
+}
+
+static void PartsEngine_GetActivityPartsName(struct string **out, struct string *name, int number)
+{
+	struct pe_activity *act = activity_find(name->text);
+	struct activity_part *part = act ? activity_part_by_number(act, number) : NULL;
+	if (!part)
+		return;
+	if (*out)
+		free_string(*out);
+	*out = string_dup(part->name);
+}
+
+static void PartsEngine_AddActivityCloseParts(struct string *name, struct string *parts_name)
+{
+	struct pe_activity *act = activity_find(name->text);
+	if (!act)
+		return;
+	for (int i = 0; i < act->nr_close_parts; i++) {
+		if (!strcmp(act->close_parts[i]->text, parts_name->text))
+			return;
+	}
+	act->close_parts = realloc(act->close_parts, (act->nr_close_parts+1) * sizeof(struct string*));
+	act->close_parts[act->nr_close_parts++] = string_ref(parts_name);
+}
+
+static void PartsEngine_RemoveActivityCloseParts(struct string *name, struct string *parts_name)
+{
+	struct pe_activity *act = activity_find(name->text);
+	if (!act)
+		return;
+	for (int i = 0; i < act->nr_close_parts; i++) {
+		if (strcmp(act->close_parts[i]->text, parts_name->text))
+			continue;
+		free_string(act->close_parts[i]);
+		memmove(&act->close_parts[i], &act->close_parts[i+1], (act->nr_close_parts-i-1) * sizeof(struct string*));
+		act->nr_close_parts--;
+		return;
+	}
+}
+
+static void PartsEngine_RemoveAllActivityCloseParts(struct string *name)
+{
+	struct pe_activity *act = activity_find(name->text);
+	if (!act)
+		return;
+	for (int i = 0; i < act->nr_close_parts; i++)
+		free_string(act->close_parts[i]);
+	act->nr_close_parts = 0;
+}
+
+static bool PartsEngine_IsExistActivityCloseParts(struct string *name, struct string *parts_name)
+{
+	struct pe_activity *act = activity_find(name->text);
+	if (!act)
+		return false;
+	for (int i = 0; i < act->nr_close_parts; i++) {
+		if (!strcmp(act->close_parts[i]->text, parts_name->text))
+			return true;
+	}
+	return false;
+}
+
+static void PartsEngine_SetActivityIntentData(struct string *name, struct string *parts_name,
+		struct string *destination, int intent_type)
+{
+	struct pe_activity *act = activity_find(name->text);
+	if (!act)
+		return;
+	struct activity_intent *it = activity_intent_get(act, parts_name);
+	it->type = intent_type;
+	// SetIntentData resets the destination list, AddIntentDataDestination appends
+	for (int i = 0; i < it->nr_dests; i++)
+		free_string(it->dests[i]);
+	it->nr_dests = 0;
+	it->dests = realloc(it->dests, sizeof(struct string*));
+	it->dests[it->nr_dests++] = string_ref(destination);
+}
+
+static void PartsEngine_AddActivityIntentDataDestination(struct string *name,
+		struct string *parts_name, struct string *destination)
+{
+	struct pe_activity *act = activity_find(name->text);
+	if (!act)
+		return;
+	struct activity_intent *it = activity_intent_get(act, parts_name);
+	it->dests = realloc(it->dests, (it->nr_dests+1) * sizeof(struct string*));
+	it->dests[it->nr_dests++] = string_ref(destination);
+}
+
+static bool PartsEngine_IsExistActivityIntentData(struct string *name, struct string *parts_name)
+{
+	struct pe_activity *act = activity_find(name->text);
+	if (!act)
+		return false;
+	for (int i = 0; i < act->nr_intents; i++) {
+		if (!strcmp(act->intents[i].parts_name->text, parts_name->text))
+			return true;
+	}
+	return false;
+}
+
+static int PartsEngine_NumofActivityIntentDataDestination(struct string *name, struct string *parts_name)
+{
+	struct pe_activity *act = activity_find(name->text);
+	if (!act)
+		return 0;
+	for (int i = 0; i < act->nr_intents; i++) {
+		if (!strcmp(act->intents[i].parts_name->text, parts_name->text))
+			return act->intents[i].nr_dests;
+	}
+	return 0;
+}
+
+static void PartsEngine_GetActivityIntentDataDestination(struct string **out, int index,
+		struct string *name, struct string *parts_name)
+{
+	struct pe_activity *act = activity_find(name->text);
+	if (!act)
+		return;
+	for (int i = 0; i < act->nr_intents; i++) {
+		struct activity_intent *it = &act->intents[i];
+		if (strcmp(it->parts_name->text, parts_name->text))
+			continue;
+		if (index < 0 || index >= it->nr_dests)
+			return;
+		if (*out)
+			free_string(*out);
+		*out = string_dup(it->dests[index]);
+		return;
+	}
+}
+
+static int PartsEngine_GetActivityIntentDataType(struct string *name, struct string *parts_name)
+{
+	struct pe_activity *act = activity_find(name->text);
+	if (!act)
+		return 0;
+	for (int i = 0; i < act->nr_intents; i++) {
+		if (!strcmp(act->intents[i].parts_name->text, parts_name->text))
+			return act->intents[i].type;
+	}
+	return 0;
+}
+
+static void PartsEngine_SetActivityEndKey(struct string *name, int key)
+{
+	struct pe_activity *act = activity_find(name->text);
+	if (act)
+		activity_add_end_key(act, key);
+}
+
+static void PartsEngine_EraseActivityEndKey(struct string *name, int key)
+{
+	struct pe_activity *act = activity_find(name->text);
+	if (!act)
+		return;
+	for (int i = 0; i < act->nr_end_keys; i++) {
+		if (act->end_keys[i] != key)
+			continue;
+		memmove(&act->end_keys[i], &act->end_keys[i+1], (act->nr_end_keys-i-1) * sizeof(int));
+		act->nr_end_keys--;
+		return;
+	}
+}
+
+static bool PartsEngine_IsExistActivityEndKey(struct string *name, int key)
+{
+	struct pe_activity *act = activity_find(name->text);
+	if (!act)
+		return false;
+	for (int i = 0; i < act->nr_end_keys; i++) {
+		if (act->end_keys[i] == key)
+			return true;
+	}
+	return false;
+}
+
+static int PartsEngine_NumofActivityEndKey(struct string *name)
+{
+	struct pe_activity *act = activity_find(name->text);
+	return act ? act->nr_end_keys : 0;
+}
+
+static int PartsEngine_GetActivityEndKey(struct string *name, int index)
+{
+	struct pe_activity *act = activity_find(name->text);
+	if (!act || index < 0 || index >= act->nr_end_keys)
+		return 0;
+	return act->end_keys[index];
+}
+
 HLL_LIBRARY(PartsEngine,
 	    HLL_EXPORT(_PreLink, PartsEngine_PreLink),
 	    // for versions without PartsEngine.Init
@@ -603,7 +1435,40 @@ HLL_LIBRARY(PartsEngine,
 	    HLL_EXPORT(Parts_SetThumbnailMode, PE_SetThumbnailMode),
 	    HLL_EXPORT(GetClickNumber, PE_GetClickPartsNumber),
 	    HLL_EXPORT(StopSoundWithoutSystemSound, PartsEngine_StopSoundWithoutSystemSound),
-	    HLL_TODO_EXPORT(ReleaseActivity, PartsEngine_ReleaseActivity),
+	    // Rance 03 activity system (name-keyed; see the comment above
+	    // activity_find for the interface-generation background)
+	    HLL_EXPORT(IsExistActivity, PartsEngine_IsExistActivity),
+	    HLL_EXPORT(CreateActivity, PartsEngine_CreateActivity),
+	    HLL_EXPORT(ReleaseActivity, PartsEngine_ReleaseActivity),
+	    HLL_EXPORT(SaveActivityEXText, PartsEngine_SaveActivityEXText),
+	    HLL_EXPORT(LoadActivityEXText, PartsEngine_LoadActivityEXText),
+	    HLL_EXPORT(ReadActivityFile, PartsEngine_ReadActivityFile),
+	    HLL_EXPORT(WriteActivityFile, PartsEngine_WriteActivityFile),
+	    HLL_EXPORT(IsExistActivityFile, PartsEngine_IsExistActivityFile),
+	    HLL_EXPORT(AddActivityParts, PartsEngine_AddActivityParts),
+	    HLL_EXPORT(RemoveActivityParts, PartsEngine_RemoveActivityParts),
+	    HLL_EXPORT(RemoveAllActivityParts, PartsEngine_RemoveAllActivityParts),
+	    HLL_EXPORT(NumofActivityParts, PartsEngine_NumofActivityParts),
+	    HLL_EXPORT(GetActivityParts, PartsEngine_GetActivityParts),
+	    HLL_EXPORT(IsExistActivityPartsByName, PartsEngine_IsExistActivityPartsByName),
+	    HLL_EXPORT(IsExistActivityPartsByNumber, PartsEngine_IsExistActivityPartsByNumber),
+	    HLL_EXPORT(GetActivityPartsNumber, PartsEngine_GetActivityPartsNumber),
+	    HLL_EXPORT(GetActivityPartsName, PartsEngine_GetActivityPartsName),
+	    HLL_EXPORT(AddActivityCloseParts, PartsEngine_AddActivityCloseParts),
+	    HLL_EXPORT(RemoveActivityCloseParts, PartsEngine_RemoveActivityCloseParts),
+	    HLL_EXPORT(RemoveAllActivityCloseParts, PartsEngine_RemoveAllActivityCloseParts),
+	    HLL_EXPORT(IsExistActivityCloseParts, PartsEngine_IsExistActivityCloseParts),
+	    HLL_EXPORT(SetActivityIntentData, PartsEngine_SetActivityIntentData),
+	    HLL_EXPORT(AddActivityIntentDataDestination, PartsEngine_AddActivityIntentDataDestination),
+	    HLL_EXPORT(IsExistActivityIntentData, PartsEngine_IsExistActivityIntentData),
+	    HLL_EXPORT(NumofActivityIntentDataDestination, PartsEngine_NumofActivityIntentDataDestination),
+	    HLL_EXPORT(GetActivityIntentDataDestination, PartsEngine_GetActivityIntentDataDestination),
+	    HLL_EXPORT(GetActivityIntentDataType, PartsEngine_GetActivityIntentDataType),
+	    HLL_EXPORT(SetActivityEndKey, PartsEngine_SetActivityEndKey),
+	    HLL_EXPORT(EraseActivityEndKey, PartsEngine_EraseActivityEndKey),
+	    HLL_EXPORT(IsExistActivityEndKey, PartsEngine_IsExistActivityEndKey),
+	    HLL_EXPORT(NumofActivityEndKey, PartsEngine_NumofActivityEndKey),
+	    HLL_EXPORT(GetActivityEndKey, PartsEngine_GetActivityEndKey),
 	    HLL_TODO_EXPORT(CrateActivityBinary, PartsEngine_CrateActivityBinary),
 	    HLL_TODO_EXPORT(ReadActivityBinary, PartsEngine_ReadActivityBinary),
 	    HLL_EXPORT(ReleaseMessage, PE_ReleaseMessage),
