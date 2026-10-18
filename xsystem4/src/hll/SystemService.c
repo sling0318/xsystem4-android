@@ -253,8 +253,11 @@ static bool SystemService_GetWindowSetting(int type, int *value)
 	return true;
 }
 
-// XXX: Values for 'type' above 1 are invalid in Haru Urare, may be different in other games
-#define NR_MOUSE_CURSOR_CONFIG 1
+// Rance 03 drives three of these (hide-on-unmoved / hide-on-keyboard-or-pad /
+// hide-while-stepping-message), from AFL_Config_Set*MouseCursorConfig, and
+// reads them back on every config-screen frame -- with the upstream cap of 1
+// the two upper types failed and the game never got an answer.
+#define NR_MOUSE_CURSOR_CONFIG 3
 static int mouse_cursor_config[NR_MOUSE_CURSOR_CONFIG] = {0};
 
 static bool SystemService_SetMouseCursorConfig(int type, int value)
