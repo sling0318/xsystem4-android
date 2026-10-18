@@ -480,6 +480,22 @@ static void AnteaterADVEngine_ModuleFini(void)
 	ADVSceneKeeper_Clear();
 }
 
+/*
+ * A plain `string` argument arrives as `struct string *`; only `ref string`
+ * arrives as a pointer to one. This function was written for the ref form, so
+ * Rance 03's `AddText(string, int)` handed it the string itself and it then
+ * dereferenced the string's own header words as a pointer.
+ */
+static void AnteaterADVEngine_ADVLogList_AddText_by_value(struct string *text)
+{
+	ADVLogList_AddText(&text);
+}
+
+static void AnteaterADVEngine_ADVLogList_AddText_window_by_value(struct string *text, possibly_unused int window_no)
+{
+	ADVLogList_AddText(&text);
+}
+
 static void AnteaterADVEngine_ADVLogList_AddText_with_window(struct string **text, possibly_unused int window_no)
 {
 	ADVLogList_AddText(text);
@@ -523,7 +539,21 @@ static void AnteaterADVEngine_PreLink(void)
 	assert(libno >= 0);
 
 	fun = get_fun(libno, "ADVLogList_AddText");
-	if (fun && fun->nr_arguments == 2) {
-		static_library_replace(&lib_AnteaterADVEngine, "ADVLogList_AddText", AnteaterADVEngine_ADVLogList_AddText_with_window);
+	if (!fun)
+		return;
+	// The .ain decides both the argument count and how a string is passed, and
+	// the call interface is built from it, so pick the shape that matches.
+	bool by_value = fun->nr_arguments >= 1 && fun->arguments[0].type.data == AIN_STRING;
+	switch (fun->nr_arguments) {
+	case 2:
+		static_library_replace(&lib_AnteaterADVEngine, "ADVLogList_AddText",
+				       by_value ? (void*)AnteaterADVEngine_ADVLogList_AddText_window_by_value
+						: (void*)AnteaterADVEngine_ADVLogList_AddText_with_window);
+		break;
+	case 1:
+		if (by_value)
+			static_library_replace(&lib_AnteaterADVEngine, "ADVLogList_AddText",
+					       (void*)AnteaterADVEngine_ADVLogList_AddText_by_value);
+		break;
 	}
 }
