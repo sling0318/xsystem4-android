@@ -752,8 +752,14 @@ static int ex_name_handle(struct string *name)
 	char *u = text2utf(name->text, strlen(name->text));
 	WARNING("MainEXFile: name not found: %s", u);
 	free(u);
-	if (nr_warned < 64)
-		warned[nr_warned++] = strdup(name->text);
+	if (nr_warned >= sizeof(warned) / sizeof(warned[0])) {
+		// The table is full: keep quiet instead of logging every occurrence.
+		// Rance 03 probes more than 64 absent keys, and the per-frame repeats
+		// filled logcat with 1800+ lines in a single millisecond, pushing the
+		// VM heartbeat out of the buffer and blinding every later diagnosis.
+		return 0;
+	}
+	warned[nr_warned++] = strdup(name->text);
 	return 0;
 }
 
