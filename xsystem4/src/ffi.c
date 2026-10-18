@@ -303,10 +303,19 @@ static void trace_hll_call(struct ain_library *lib, struct ain_hll_function *f,
  * of the shapes this takes. Report it at the boundary instead, while the call,
  * the argument and the heap slot are all still named.
  */
+static bool plausible_ptr(void *p)
+{
+	// x86-64 userspace: the top 16 bits are clear and bit 47 is the sign.
+	// Anything else (0x010000060000001e and friends) is uninitialised memory,
+	// not a pointer that ever pointed at a string.
+	uintptr_t v = (uintptr_t)p;
+	return v && v < ((uintptr_t)1 << 47);
+}
+
 static bool string_slot_ok(int slot)
 {
 	return heap_index_valid(slot) && heap[slot].type == VM_STRING
-		&& heap[slot].ref > 0 && heap[slot].s;
+		&& heap[slot].ref > 0 && plausible_ptr(heap[slot].s);
 }
 
 static void report_bad_string_arg(int libno, struct ain_hll_function *f,
@@ -329,19 +338,27 @@ static void report_bad_string_arg(int libno, struct ain_hll_function *f,
 		used += snprintf(raw + used, sizeof(raw) - used, " [%d]=%d", a,
 				 stack[stack_ptr + a].i);
 
+	char where[64];
+	uint32_t aseq = 0;
+	size_t aip = 0;
+	if (heap_alloc_where(slot, &aseq, &aip))
+		snprintf(where, sizeof(where), " allocated@0x%X(seq %u)", (unsigned)aip, aseq);
+	else
+		snprintf(where, sizeof(where), " alloc-site-not-traced");
+
 	if (heap_index_valid(slot))
 		WARNING("BAD string argument: %s.%s(%s) #%d from %s%s | "
-			"heap[%d]{type=%d ref=%d seq=%u s=%p} heap_size=%zu",
+			"heap[%d]{type=%d ref=%d seq=%u s=%p} heap_size=%zu%s",
 			ain->libraries[libno].name, f->name,
 			f->arguments[argno].name, argno, caller, raw,
 			slot, (int)heap[slot].type, heap[slot].ref,
-			heap[slot].seq, (void*)heap[slot].s, heap_size);
+			heap[slot].seq, (void*)heap[slot].s, heap_size, where);
 	else
 		WARNING("BAD string argument: %s.%s(%s) #%d from %s%s | "
-			"slot %d outside heap_size=%zu",
+			"slot %d outside heap_size=%zu%s",
 			ain->libraries[libno].name, f->name,
 			f->arguments[argno].name, argno, caller, raw,
-			slot, heap_size);
+			slot, heap_size, where);
 
 	// The caller's own variables: if the value that came in is already junk
 	// here, the producer is upstream of this call, not in the marshalling.

@@ -54,7 +54,10 @@ void heap_grow(size_t new_size)
 	heap = xrealloc(heap, sizeof(struct vm_pointer) * new_size);
 	heap_free_stack = xrealloc(heap_free_stack, sizeof(int32_t) * new_size);
 	for (size_t i = heap_size; i < new_size; i++) {
-		heap[i].ref = 0;
+		// xrealloc hands back whatever the allocator had past the old end.
+		// Leaving the pointer field dirty means a slot that nobody assigned
+		// still reads back as a plausible-but-bogus struct string *.
+		memset(&heap[i], 0, sizeof(heap[i]));
 		heap_free_stack[i] = i;
 	}
 	heap_size = new_size;
@@ -77,6 +80,22 @@ void heap_init(void)
 	heap_next_seq = 1;
 }
 
+/*
+ * Which VM instruction last owned each of the most recent heap slots. When a
+ * heap-backed argument arrives as junk, the only way to find its producer
+ * without a device round-trip per guess is to be able to say where the slot
+ * was handed out. Keeping the instruction address means it can be resolved
+ * offline against the .ain.
+ */
+#define ALLOC_TRACE_SIZE 512
+struct alloc_trace_entry {
+	int32_t slot;
+	uint32_t seq;
+	size_t ip;
+};
+static struct alloc_trace_entry alloc_trace[ALLOC_TRACE_SIZE];
+static unsigned alloc_trace_at;
+
 int32_t heap_alloc_slot(enum vm_pointer_type type)
 {
 	if (heap_free_ptr >= heap_size) {
@@ -87,6 +106,15 @@ int32_t heap_alloc_slot(enum vm_pointer_type type)
 	heap[slot].ref = 1;
 	heap[slot].seq = heap_next_seq++;
 	heap[slot].type = type;
+	// Nothing here inherits the previous occupant: a slot that nobody
+	// assigns must read back as empty, not as somebody else's string.
+	heap[slot].s = NULL;
+	if (config.trace_vm || config.stub_unimplemented_hll) {
+		alloc_trace[alloc_trace_at].slot = slot;
+		alloc_trace[alloc_trace_at].seq = heap[slot].seq;
+		alloc_trace[alloc_trace_at].ip = instr_ptr;
+		alloc_trace_at = (alloc_trace_at + 1) % ALLOC_TRACE_SIZE;
+	}
 #ifdef DEBUG_HEAP
 	heap[slot].alloc_addr = instr_ptr;
 	memset(heap[slot].ref_addr, 0, sizeof(heap[slot].ref_addr));
@@ -96,6 +124,22 @@ int32_t heap_alloc_slot(enum vm_pointer_type type)
 	heap[slot].free_addr = 0;
 #endif
 	return slot;
+}
+
+// Where was this slot last handed out? Returns false if it's not in the ring.
+bool heap_alloc_where(int32_t slot, uint32_t *seq, size_t *ip)
+{
+	for (unsigned n = 1; n <= ALLOC_TRACE_SIZE; n++) {
+		unsigned i = (alloc_trace_at + ALLOC_TRACE_SIZE - n) % ALLOC_TRACE_SIZE;
+		if (alloc_trace[i].slot == slot) {
+			if (seq)
+				*seq = alloc_trace[i].seq;
+			if (ip)
+				*ip = alloc_trace[i].ip;
+			return true;
+		}
+	}
+	return false;
 }
 
 static void heap_free_slot(int32_t slot)

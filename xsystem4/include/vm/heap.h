@@ -57,6 +57,7 @@ void heap_delete(void);
 void heap_grow(size_t new_size);
 
 int32_t heap_alloc_slot(enum vm_pointer_type type);
+bool heap_alloc_where(int32_t slot, uint32_t *seq, size_t *ip);
 void heap_ref(int slot);
 void heap_unref(int slot);
 void exit_unref(int slot);
