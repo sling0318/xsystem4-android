@@ -294,6 +294,40 @@ static void trace_hll_call(struct ain_library *lib, struct ain_hll_function *f,
 }
 #endif /* TRACE_HLL */
 
+/*
+ * HLL functions dereference their string arguments without checking, so a null
+ * one doesn't fail here -- it fails hundreds of instructions later, inside a
+ * library function whose name no longer tells you which script value came in
+ * empty. Say so at the boundary, while the call, the argument and the heap
+ * slot are all still named.
+ */
+static struct string *null_string_arg(int libno, struct ain_hll_function *f,
+				      int argno, int slot)
+{
+	static int logged = 0;
+	const char *caller = "?";
+	int cfno = call_stack_ptr > 0 ? call_stack[call_stack_ptr - 1].fno : -1;
+	if (cfno >= 0 && cfno < ain->nr_functions)
+		caller = ain->functions[cfno].name;
+	if (logged++ < 8) {
+		char raw[240];
+		int used = 0;
+		// Arguments 0..argno are still on the stack, so a shifted call
+		// shows up here as slots that aren't strings at all.
+		for (int a = 0; a <= argno && a < 6; a++) {
+			int s = stack[stack_ptr + a].i;
+			used += snprintf(raw + used, sizeof(raw) - used, " [%d]=%d{%d}",
+					 a, s, heap_index_valid(s) ? (int)heap[s].type : -9);
+		}
+		WARNING("NULL string argument: %s.%s(%s) #%d from %s%s",
+			ain->libraries[libno].name, f->name,
+			f->arguments[argno].name, argno, caller, raw);
+	}
+	if (!config.stub_unimplemented_hll)
+		VM_ERROR("null string argument to %s.%s", ain->libraries[libno].name, f->name);
+	return string_ref(&EMPTY_STRING);
+}
+
 void hll_call(int libno, int fno)
 {
 	struct ain_hll_function *f = &ain->libraries[libno].functions[fno];
@@ -324,17 +358,30 @@ void hll_call(int libno, int fno)
 			args[i] = &ptrs[i];
 			break;
 		}
-		case AIN_STRING:
+		case AIN_STRING: {
 			stack_ptr--;
-			args[i] = &heap[stack[stack_ptr].i].s;
+			int slot = stack[stack_ptr].i;
+			if (!heap_index_valid(slot))
+				VM_ERROR("bad heap slot %d for %s.%s argument #%d",
+					 slot, ain->libraries[libno].name, f->name, i);
+			if (!heap[slot].s)
+				heap[slot].s = null_string_arg(libno, f, i, slot);
+			args[i] = &heap[slot].s;
 			break;
-		case AIN_REF_STRING:
+		}
+		case AIN_REF_STRING: {
 			stack_ptr--;
 			heap_slots[i] = stack[stack_ptr].i;
-			heap_ptrs[i] = heap[stack[stack_ptr].i].s;
+			if (!heap_index_valid(heap_slots[i]))
+				VM_ERROR("bad heap slot %d for %s.%s argument #%d",
+					 heap_slots[i], ain->libraries[libno].name, f->name, i);
+			heap_ptrs[i] = heap[heap_slots[i]].s;
+			if (!heap_ptrs[i])
+				heap_ptrs[i] = null_string_arg(libno, f, i, heap_slots[i]);
 			ptrs[i] = &heap_ptrs[i];
 			args[i] = &ptrs[i];
 			break;
+		}
 		case AIN_STRUCT:
 		case AIN_ARRAY_TYPE:
 			stack_ptr--;
