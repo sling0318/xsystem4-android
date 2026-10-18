@@ -36,7 +36,7 @@ struct adv_log {
 	unsigned nr_lines;
 	struct string **lines;
 	unsigned nr_voices;
-	int *voices;
+	struct string **voices;	// voice file names (Rance 03 passes names, not numbers)
 };
 
 static bool enabled = true;
@@ -62,6 +62,9 @@ static void free_log(struct adv_log *log)
 		free_string(log->lines[i]);
 	}
 	free(log->lines);
+	for (unsigned i = 0; i < log->nr_voices; i++) {
+		free_string(log->voices[i]);
+	}
 	free(log->voices);
 	log->nr_lines = 0;
 	log->lines = NULL;
@@ -130,12 +133,12 @@ void ADVLogList_AddNewPage(void)
 	init_log(&logs[log_last]);
 }
 
-void ADVLogList_AddVoice(int voice_no)
+void ADVLogList_AddVoice(struct string *voice_name)
 {
 	if (!enabled) return;
 	struct adv_log *log = current_log();
-	log->voices = xrealloc_array(log->voices, log->nr_voices, log->nr_voices+1, sizeof(int));
-	log->voices[log->nr_voices++] = voice_no;
+	log->voices = xrealloc_array(log->voices, log->nr_voices, log->nr_voices+1, sizeof(struct string*));
+	log->voices[log->nr_voices++] = string_ref(voice_name);
 }
 
 void ADVLogList_SetEnable(bool on)
@@ -183,22 +186,24 @@ int ADVLogList_GetNumofADVLogVoice(int log_no)
 	return log_entry(log_no)->nr_voices;
 }
 
-int ADVLogList_GetADVLogVoice(int log_no, int voice_no)
+void ADVLogList_GetADVLogVoice(int log_no, int voice_no, struct string **out)
 {
 	struct adv_log *log = log_entry(log_no);
 	if (voice_no < 0 || (unsigned)voice_no >= log->nr_voices)
 		VM_ERROR("Invalid voice number: %d", voice_no);
 
-	return log->voices[voice_no];
+	*out = string_ref(log->voices[voice_no]);
 }
 
-int ADVLogList_GetADVLogVoiceLast(int log_no)
+void ADVLogList_GetADVLogVoiceLast(int log_no, struct string **out)
 {
 	struct adv_log *log = log_entry(log_no);
 	unsigned nr_voices = log->nr_voices;
-	if (!nr_voices)
-		return 0;
-	return log->voices[nr_voices - 1];
+	if (!nr_voices) {
+		*out = string_ref(string_alloc(0));
+		return;
+	}
+	*out = string_ref(log->voices[nr_voices - 1]);
 }
 
 bool ADVLogList_Save(struct page **iarray)
@@ -230,7 +235,7 @@ bool ADVLogList_Save(struct page **iarray)
 		}
 		iarray_write(&b, log->nr_voices);
 		for (unsigned i = 0; i < log->nr_voices; i++) {
-			iarray_write(&b, log->voices[i]);
+			iarray_write_string(&b, log->voices[i]);
 		}
 	}
 	iarray_write(&b, 1);
@@ -289,9 +294,9 @@ bool ADVLogList_Load(struct page **data)
 			goto error;
 		}
 
-		log->voices = xcalloc(nr_voices, sizeof(int));
+		log->voices = xcalloc(nr_voices, sizeof(struct string*));
 		for (int i = 0; i < nr_voices; i++) {
-			log->voices[i] = iarray_read(&r);
+			log->voices[i] = iarray_read_string(&r);
 		}
 		log->nr_voices = nr_voices;
 	}

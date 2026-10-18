@@ -26,15 +26,15 @@ void ADVLogList_Clear(void);
 void ADVLogList_AddText(struct string **text);
 void ADVLogList_AddNewLine(void);
 void ADVLogList_AddNewPage(void);
-void ADVLogList_AddVoice(int nVoiceNumber);
+void ADVLogList_AddVoice(struct string *voice_name);
 void ADVLogList_SetEnable(bool bEnable);
 bool ADVLogList_IsEnable(void);
 int ADVLogList_GetNumofADVLog(void);
 int ADVLogList_GetNumofADVLogText(int nADVLog);
 void ADVLogList_GetADVLogText(int nADVLog, int nText, struct string **text);
 int ADVLogList_GetNumofADVLogVoice(int nADVLog);
-int ADVLogList_GetADVLogVoice(int nADVLog, int Index);
-int ADVLogList_GetADVLogVoiceLast(int log_no); // for StoatSpriteEngine
+void ADVLogList_GetADVLogVoice(int nADVLog, int Index, struct string **out);
+void ADVLogList_GetADVLogVoiceLast(int log_no, struct string **out); // for StoatSpriteEngine
 bool ADVLogList_Save(struct page **iarray);
 bool ADVLogList_Load(struct page **iarray);
 bool ADVSceneKeeper_AddADVScene(struct page **page);
