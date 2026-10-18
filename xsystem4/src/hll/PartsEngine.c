@@ -817,7 +817,18 @@ static int activity_walk_part(struct pe_activity *act, struct ex_tree *part, int
 	int speedup = act_int(part, ACT_N_SPEEDUP, 0);
 	if (speedup)
 		PE_SetSpeedupRateByMessageSkip(no, speedup);
-	PE_SetClickable(no, act_int(part, ACT_N_CLICKABLE, 0));
+	/*
+	 * クリック許可 is not parts->clickable. Every part in the shipped .pactex
+	 * files carries 0 there, and the game only ever touches clickability from
+	 * the scene editor and context menus (Ｐ＿クリック可能設定). Mapping the
+	 * field literally left the whole config screen unable to raise
+	 * PARTS_MSG_MOUSE_CLICK -- the hit test still captures the press because
+	 * pass_cursor is 0, so the buttons lit up as pressed and never fired.
+	 * What actually decides it is the widget type.
+	 */
+	struct ex_tree *info = act_tree_child(part, ACT_N_TYPE_INFO);
+	int widget_type = (info && !info->is_leaf) ? act_int(info, ACT_N_PART_TYPE, 0) : -1;
+	PE_SetClickable(no, widget_type == 0 || widget_type == 1 || widget_type == 3);
 	PE_SetPassCursor(no, act_int(part, ACT_N_PASS_CURSOR, 0));
 	PE_SetDrag(no, act_int(part, ACT_N_DRAG, 0));
 	PE_SetPartsPixelDecide(no, act_int(part, ACT_N_PIXEL_DECIDE, 0));
@@ -845,7 +856,6 @@ static int activity_walk_part(struct pe_activity *act, struct ex_tree *part, int
 	}
 
 	// type-specific information
-	struct ex_tree *info = act_tree_child(part, ACT_N_TYPE_INFO);
 	if (info && !info->is_leaf) {
 		int type = act_int(info, ACT_N_PART_TYPE, 0);
 		switch (type) {
