@@ -66,6 +66,9 @@ static void parts_init(struct parts *parts)
 	parts->delegate_index = -1;
 	parts->want_save = true;
 	parts->want_back_scene = false;
+	parts->checked = false;
+	// 乘算色式的默认值：没被 SetCheckBoxColor 写过之前当作不染色
+	parts->checkbox_color[0] = parts->checkbox_color[1] = parts->checkbox_color[2] = 255;
 	parts->on_cursor_sound = -1;
 	parts->on_click_sound = -1;
 	parts->origin_mode = 1;
@@ -2231,6 +2234,37 @@ bool PE_parts_want_back_scene(int parts_no)
 {
 	struct parts *parts = parts_try_get(parts_no);
 	return parts ? parts->want_back_scene : false;
+}
+
+void PE_parts_set_checked(int parts_no, bool checked)
+{
+	struct parts *parts = parts_try_get(parts_no);
+	if (parts)
+		parts->checked = checked;
+}
+
+bool PE_parts_checked(int parts_no)
+{
+	struct parts *parts = parts_try_get(parts_no);
+	return parts ? parts->checked : false;
+}
+
+void PE_parts_set_checkbox_color(int parts_no, int r, int g, int b)
+{
+	struct parts *parts = parts_try_get(parts_no);
+	if (!parts)
+		return;
+	parts->checkbox_color[0] = r;
+	parts->checkbox_color[1] = g;
+	parts->checkbox_color[2] = b;
+}
+
+int PE_parts_checkbox_color(int parts_no, int channel)
+{
+	struct parts *parts = parts_try_get(parts_no);
+	if (!parts || channel < 0 || channel > 2)
+		return 255;
+	return parts->checkbox_color[channel];
 }
 
 void PE_clear_back_scene_flags(void)

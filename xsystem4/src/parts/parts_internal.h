@@ -419,6 +419,12 @@ struct parts {
 	bool lock_input_state;
 	bool want_save;
 	bool want_back_scene;
+	// Check-box state. The game drives it itself (setConfigCheckbox /
+	// CheckBoxParts@setCheck write it on click, CConfigView@SetCheckStatForParts
+	// polls it every frame), so the engine only has to remember and hand it
+	// back; it is deliberately not part of the parts save stream.
+	bool checked;
+	int checkbox_color[3];
 	bool draggable;
 	int on_cursor_sound;
 	int on_click_sound;

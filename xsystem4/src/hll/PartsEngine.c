@@ -396,6 +396,43 @@ static bool PartsEngine_IsWantSaveBackScene(int parts_no)
 	return PE_parts_want_back_scene(parts_no);
 }
 
+/*
+ * Check-box state. Rance 03's config screen polls IsCheckBoxChecked every
+ * frame from CConfigView@SetCheckStatForParts while the game writes the new
+ * state itself on click (setConfigCheckbox -> Ｐ＿チェックボックス＿チェック状態設定).
+ * With both answers stubbed to zero the poll never sees a change, so the
+ * bottom buttons of the config page lit up as pressed and did nothing.
+ */
+static void PartsEngine_CheckBoxChecked(int parts_no, bool checked)
+{
+	PE_parts_set_checked(parts_no, checked);
+}
+
+static bool PartsEngine_IsCheckBoxChecked(int parts_no)
+{
+	return PE_parts_checked(parts_no);
+}
+
+static void PartsEngine_SetCheckBoxColor(int parts_no, int r, int g, int b)
+{
+	PE_parts_set_checkbox_color(parts_no, r, g, b);
+}
+
+static int PartsEngine_GetCheckBoxR(int parts_no)
+{
+	return PE_parts_checkbox_color(parts_no, 0);
+}
+
+static int PartsEngine_GetCheckBoxG(int parts_no)
+{
+	return PE_parts_checkbox_color(parts_no, 1);
+}
+
+static int PartsEngine_GetCheckBoxB(int parts_no)
+{
+	return PE_parts_checkbox_color(parts_no, 2);
+}
+
 static void PartsEngine_ClearBackScene(void)
 {
 	PE_clear_back_scene_flags();
@@ -1580,12 +1617,12 @@ HLL_LIBRARY(PartsEngine,
 	    HLL_TODO_EXPORT(SetCheckBoxSize, PartsEngine_SetCheckBoxSize),
 	    HLL_TODO_EXPORT(SetCheckBoxDrag, PartsEngine_SetCheckBoxDrag),
 	    HLL_TODO_EXPORT(IsCheckBoxDrag, PartsEngine_IsCheckBoxDrag),
-	    HLL_TODO_EXPORT(CheckBoxChecked, PartsEngine_CheckBoxChecked),
-	    HLL_TODO_EXPORT(IsCheckBoxChecked, PartsEngine_IsCheckBoxChecked),
-	    HLL_TODO_EXPORT(SetCheckBoxColor, PartsEngine_SetCheckBoxColor),
-	    HLL_TODO_EXPORT(GetCheckBoxR, PartsEngine_GetCheckBoxR),
-	    HLL_TODO_EXPORT(GetCheckBoxG, PartsEngine_GetCheckBoxG),
-	    HLL_TODO_EXPORT(GetCheckBoxB, PartsEngine_GetCheckBoxB),
+	    HLL_EXPORT(CheckBoxChecked, PartsEngine_CheckBoxChecked),
+	    HLL_EXPORT(IsCheckBoxChecked, PartsEngine_IsCheckBoxChecked),
+	    HLL_EXPORT(SetCheckBoxColor, PartsEngine_SetCheckBoxColor),
+	    HLL_EXPORT(GetCheckBoxR, PartsEngine_GetCheckBoxR),
+	    HLL_EXPORT(GetCheckBoxG, PartsEngine_GetCheckBoxG),
+	    HLL_EXPORT(GetCheckBoxB, PartsEngine_GetCheckBoxB),
 	    HLL_TODO_EXPORT(SetCheckBoxFontProperty, PartsEngine_SetCheckBoxFontProperty),
 	    HLL_TODO_EXPORT(GetCheckBoxFontProperty, PartsEngine_GetCheckBoxFontProperty),
 	    HLL_TODO_EXPORT(SetCheckBoxOnCursorSoundNumber, PartsEngine_SetCheckBoxOnCursorSoundNumber),
