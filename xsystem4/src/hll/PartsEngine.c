@@ -719,6 +719,26 @@ static float act_list_num(struct ex_value *v, int i, float dflt)
 // ／通常, ／オン, ／ダウン (and ／無効 for the disabled variant).  The
 // .pactex only names the base, so resolve the suffix per state and fall
 // back to the base name when a variant is missing.
+//
+// The fallback is worth knowing about: a button whose ／通常 variant is missing
+// ends up with the bare base name as its CG, which usually draws nothing at all
+// rather than drawing something wrong -- exactly how the config page's seven
+// category tabs can be created, wired and shown yet invisible.
+static void activity_note_cg_fallback(struct string *base, const char *tried)
+{
+	if (!config.trace_vm)
+		return;
+	static char *seen[64];
+	static unsigned nr_seen;
+	for (unsigned i = 0; i < nr_seen; i++) {
+		if (!strcmp(seen[i], base->text))
+			return;
+	}
+	if (nr_seen < sizeof(seen) / sizeof(seen[0]))
+		seen[nr_seen++] = strdup(base->text);
+	WARNING("pactex: no CG for %s (button %s)", tried, base->text);
+}
+
 static void activity_set_button_cg(int parts_no, struct string *base, bool enabled)
 {
 	static const char *suffix[ACT_NR_STATES] = { ACT_N_SFX_0, ACT_N_SFX_1, ACT_N_SFX_2 };
@@ -730,7 +750,6 @@ static void activity_set_button_cg(int parts_no, struct string *base, bool enabl
 			free_string(name);
 			continue;
 		}
-		free_string(name);
 		if (!enabled && st == 0) {
 			// disabled buttons use the ／無効 variant for every state
 			struct string *dis = string_dup(base);
@@ -739,10 +758,15 @@ static void activity_set_button_cg(int parts_no, struct string *base, bool enabl
 				for (int st2 = 0; st2 < ACT_NR_STATES; st2++)
 					PE_SetPartsCG(parts_no, dis, 0, st2+1);
 				free_string(dis);
+				free_string(name);
 				return;
 			}
+			activity_note_cg_fallback(base, dis->text);
 			free_string(dis);
+		} else {
+			activity_note_cg_fallback(base, name->text);
 		}
+		free_string(name);
 		PE_SetPartsCG(parts_no, base, 0, st+1);
 	}
 }
@@ -1032,6 +1056,8 @@ static bool activity_load_pact(struct pe_activity *act, struct archive_data *dat
 		}
 	}
 	ex_free(ex);
+	if (config.trace_vm)
+		WARNING("pactex: %s -> %d parts", data->name, act->nr_parts);
 	return true;
 }
 
