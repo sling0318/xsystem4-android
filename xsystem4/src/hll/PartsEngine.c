@@ -433,6 +433,78 @@ static int PartsEngine_GetCheckBoxB(int parts_no)
 	return PE_parts_checkbox_color(parts_no, 2);
 }
 
+/*
+ * 滚动条数值（.pactex 的 横/縦スクロール, パーツタイプ 3）。
+ *
+ * 横竖共用同一份存储 -- 一个部件不会同时是两者。引擎不解释这些数字的含义，只保证
+ * 游戏写进去的能读回来：CConfigView@SetHScrollRateForAsra 和
+ * setConfigParamFromSliderValue 每帧都要读，整族空壳时读回 0，配置页那一页的
+ * 更新逻辑就走不到底。CG/flat 名与音效那几个仍留空壳：条状图本身已经画出来了，
+ * 滑块怎么描没有参照物，不猜。
+ */
+#define SCROLL_INT(HV, NAME, FIELD) \
+	static void PartsEngine_Set##HV##Scrollbar##NAME(int parts_no, int value) { \
+		struct parts_scroll *s = PE_parts_scroll(parts_no); \
+		if (s) \
+			s->FIELD = value; \
+	} \
+	static int PartsEngine_Get##HV##Scrollbar##NAME(int parts_no) { \
+		struct parts_scroll *s = PE_parts_scroll(parts_no); \
+		return s ? s->FIELD : 0; \
+	}
+
+SCROLL_INT(H, TotalSize, total_size)
+SCROLL_INT(V, TotalSize, total_size)
+SCROLL_INT(H, ViewSize, view_size)
+SCROLL_INT(V, ViewSize, view_size)
+SCROLL_INT(H, ScrollPos, scroll_pos)
+SCROLL_INT(V, ScrollPos, scroll_pos)
+SCROLL_INT(H, MoveSizeByButton, move_by_button)
+SCROLL_INT(V, MoveSizeByButton, move_by_button)
+SCROLL_INT(H, LeftWidth, button_a)
+SCROLL_INT(V, UpHeight, button_a)
+SCROLL_INT(H, RightWidth, button_b)
+SCROLL_INT(V, DownHeight, button_b)
+
+static void PartsEngine_SetHScrollbarScrollRate(int parts_no, float rate)
+{
+	struct parts_scroll *s = PE_parts_scroll(parts_no);
+	if (s)
+		s->scroll_rate = rate;
+}
+
+static float PartsEngine_GetHScrollbarScrollRate(int parts_no)
+{
+	struct parts_scroll *s = PE_parts_scroll(parts_no);
+	return s ? s->scroll_rate : 0.0f;
+}
+
+static void PartsEngine_SetVScrollbarScrollRate(int parts_no, float rate)
+{
+	PartsEngine_SetHScrollbarScrollRate(parts_no, rate);
+}
+
+static float PartsEngine_GetVScrollbarScrollRate(int parts_no)
+{
+	return PartsEngine_GetHScrollbarScrollRate(parts_no);
+}
+
+// Set{H,V}ScrollbarSize(no, 长, 宽): 横条是 (长, 高)，竖条是 (长, 宽)；
+// 引擎只按数值存，谁用哪个由游戏自己决定。
+static void PartsEngine_SetHScrollbarSize(int parts_no, int length, int thickness)
+{
+	struct parts_scroll *s = PE_parts_scroll(parts_no);
+	if (s) {
+		s->width = length;
+		s->height = thickness;
+	}
+}
+
+static void PartsEngine_SetVScrollbarSize(int parts_no, int length, int thickness)
+{
+	PartsEngine_SetHScrollbarSize(parts_no, length, thickness);
+}
+
 static void PartsEngine_ClearBackScene(void)
 {
 	PE_clear_back_scene_flags();
@@ -890,6 +962,25 @@ static int activity_walk_part(struct pe_activity *act, struct ex_tree *part, int
 				}
 			}
 			break;
+		case 3:
+			// 横/縦スクロール：数值原样收下，之后由游戏自己读写
+		{
+			struct parts_scroll *s = PE_parts_scroll(no);
+			if (!s)
+				break;
+			s->total_size = act_int(info, ACT_N_SCR_TOTAL, 0);
+			s->view_size = act_int(info, ACT_N_SCR_VIEW, 0);
+			s->scroll_pos = act_int(info, ACT_N_SCR_POS, 0);
+			s->button_a = act_int(info, ACT_N_SCR_PREV, 0);
+			s->button_b = act_int(info, ACT_N_SCR_NEXT, 0);
+			s->move_by_button = act_int(info, ACT_N_SCR_MOVE, 0);
+			s->width = act_int(info, ACT_N_SCR_LENGTH, 0);
+			s->height = act_int(info, ACT_N_SCR_THICK, 0);
+			struct ex_value *rate = act_leaf(info, ACT_N_SCR_RATE);
+			if (rate && rate->type == EX_FLOAT)
+				s->scroll_rate = rate->f;
+			break;
+		}
 		case 10:
 			// clip container: per-state CGs follow
 			break;
@@ -1647,42 +1738,42 @@ HLL_LIBRARY(PartsEngine,
 	    HLL_TODO_EXPORT(SetVScrollbarClickSoundNumber, PartsEngine_SetVScrollbarClickSoundNumber),
 	    HLL_TODO_EXPORT(GetVScrollbarOnCursorSoundNumber, PartsEngine_GetVScrollbarOnCursorSoundNumber),
 	    HLL_TODO_EXPORT(GetVScrollbarClickSoundNumber, PartsEngine_GetVScrollbarClickSoundNumber),
-	    HLL_TODO_EXPORT(SetVScrollbarSize, PartsEngine_SetVScrollbarSize),
-	    HLL_TODO_EXPORT(SetVScrollbarUpHeight, PartsEngine_SetVScrollbarUpHeight),
-	    HLL_TODO_EXPORT(SetVScrollbarDownHeight, PartsEngine_SetVScrollbarDownHeight),
-	    HLL_TODO_EXPORT(GetVScrollbarUpHeight, PartsEngine_GetVScrollbarUpHeight),
-	    HLL_TODO_EXPORT(GetVScrollbarDownHeight, PartsEngine_GetVScrollbarDownHeight),
-	    HLL_TODO_EXPORT(SetVScrollbarTotalSize, PartsEngine_SetVScrollbarTotalSize),
-	    HLL_TODO_EXPORT(SetVScrollbarViewSize, PartsEngine_SetVScrollbarViewSize),
-	    HLL_TODO_EXPORT(SetVScrollbarScrollPos, PartsEngine_SetVScrollbarScrollPos),
-	    HLL_TODO_EXPORT(SetVScrollbarScrollRate, PartsEngine_SetVScrollbarScrollRate),
-	    HLL_TODO_EXPORT(SetVScrollbarMoveSizeByButton, PartsEngine_SetVScrollbarMoveSizeByButton),
-	    HLL_TODO_EXPORT(GetVScrollbarTotalSize, PartsEngine_GetVScrollbarTotalSize),
-	    HLL_TODO_EXPORT(GetVScrollbarViewSize, PartsEngine_GetVScrollbarViewSize),
-	    HLL_TODO_EXPORT(GetVScrollbarScrollPos, PartsEngine_GetVScrollbarScrollPos),
-	    HLL_TODO_EXPORT(GetVScrollbarScrollRate, PartsEngine_GetVScrollbarScrollRate),
-	    HLL_TODO_EXPORT(GetVScrollbarMoveSizeByButton, PartsEngine_GetVScrollbarMoveSizeByButton),
+	    HLL_EXPORT(SetVScrollbarSize, PartsEngine_SetVScrollbarSize),
+	    HLL_EXPORT(SetVScrollbarUpHeight, PartsEngine_SetVScrollbarUpHeight),
+	    HLL_EXPORT(SetVScrollbarDownHeight, PartsEngine_SetVScrollbarDownHeight),
+	    HLL_EXPORT(GetVScrollbarUpHeight, PartsEngine_GetVScrollbarUpHeight),
+	    HLL_EXPORT(GetVScrollbarDownHeight, PartsEngine_GetVScrollbarDownHeight),
+	    HLL_EXPORT(SetVScrollbarTotalSize, PartsEngine_SetVScrollbarTotalSize),
+	    HLL_EXPORT(SetVScrollbarViewSize, PartsEngine_SetVScrollbarViewSize),
+	    HLL_EXPORT(SetVScrollbarScrollPos, PartsEngine_SetVScrollbarScrollPos),
+	    HLL_EXPORT(SetVScrollbarScrollRate, PartsEngine_SetVScrollbarScrollRate),
+	    HLL_EXPORT(SetVScrollbarMoveSizeByButton, PartsEngine_SetVScrollbarMoveSizeByButton),
+	    HLL_EXPORT(GetVScrollbarTotalSize, PartsEngine_GetVScrollbarTotalSize),
+	    HLL_EXPORT(GetVScrollbarViewSize, PartsEngine_GetVScrollbarViewSize),
+	    HLL_EXPORT(GetVScrollbarScrollPos, PartsEngine_GetVScrollbarScrollPos),
+	    HLL_EXPORT(GetVScrollbarScrollRate, PartsEngine_GetVScrollbarScrollRate),
+	    HLL_EXPORT(GetVScrollbarMoveSizeByButton, PartsEngine_GetVScrollbarMoveSizeByButton),
 	    HLL_TODO_EXPORT(SetVScrollbarCGName, PartsEngine_SetVScrollbarCGName),
 	    HLL_TODO_EXPORT(GetVScrollbarCGName, PartsEngine_GetVScrollbarCGName),
 	    HLL_TODO_EXPORT(SetHScrollbarOnCursorSoundNumber, PartsEngine_SetHScrollbarOnCursorSoundNumber),
 	    HLL_TODO_EXPORT(SetHScrollbarClickSoundNumber, PartsEngine_SetHScrollbarClickSoundNumber),
 	    HLL_TODO_EXPORT(GetHScrollbarOnCursorSoundNumber, PartsEngine_GetHScrollbarOnCursorSoundNumber),
 	    HLL_TODO_EXPORT(GetHScrollbarClickSoundNumber, PartsEngine_GetHScrollbarClickSoundNumber),
-	    HLL_TODO_EXPORT(SetHScrollbarSize, PartsEngine_SetHScrollbarSize),
-	    HLL_TODO_EXPORT(SetHScrollbarLeftWidth, PartsEngine_SetHScrollbarLeftWidth),
-	    HLL_TODO_EXPORT(SetHScrollbarRightWidth, PartsEngine_SetHScrollbarRightWidth),
-	    HLL_TODO_EXPORT(GetHScrollbarLeftWidth, PartsEngine_GetHScrollbarLeftWidth),
-	    HLL_TODO_EXPORT(GetHScrollbarRightWidth, PartsEngine_GetHScrollbarRightWidth),
-	    HLL_TODO_EXPORT(SetHScrollbarTotalSize, PartsEngine_SetHScrollbarTotalSize),
-	    HLL_TODO_EXPORT(SetHScrollbarViewSize, PartsEngine_SetHScrollbarViewSize),
-	    HLL_TODO_EXPORT(SetHScrollbarScrollPos, PartsEngine_SetHScrollbarScrollPos),
-	    HLL_TODO_EXPORT(SetHScrollbarScrollRate, PartsEngine_SetHScrollbarScrollRate),
-	    HLL_TODO_EXPORT(SetHScrollbarMoveSizeByButton, PartsEngine_SetHScrollbarMoveSizeByButton),
-	    HLL_TODO_EXPORT(GetHScrollbarTotalSize, PartsEngine_GetHScrollbarTotalSize),
-	    HLL_TODO_EXPORT(GetHScrollbarViewSize, PartsEngine_GetHScrollbarViewSize),
-	    HLL_TODO_EXPORT(GetHScrollbarScrollPos, PartsEngine_GetHScrollbarScrollPos),
-	    HLL_TODO_EXPORT(GetHScrollbarScrollRate, PartsEngine_GetHScrollbarScrollRate),
-	    HLL_TODO_EXPORT(GetHScrollbarMoveSizeByButton, PartsEngine_GetHScrollbarMoveSizeByButton),
+	    HLL_EXPORT(SetHScrollbarSize, PartsEngine_SetHScrollbarSize),
+	    HLL_EXPORT(SetHScrollbarLeftWidth, PartsEngine_SetHScrollbarLeftWidth),
+	    HLL_EXPORT(SetHScrollbarRightWidth, PartsEngine_SetHScrollbarRightWidth),
+	    HLL_EXPORT(GetHScrollbarLeftWidth, PartsEngine_GetHScrollbarLeftWidth),
+	    HLL_EXPORT(GetHScrollbarRightWidth, PartsEngine_GetHScrollbarRightWidth),
+	    HLL_EXPORT(SetHScrollbarTotalSize, PartsEngine_SetHScrollbarTotalSize),
+	    HLL_EXPORT(SetHScrollbarViewSize, PartsEngine_SetHScrollbarViewSize),
+	    HLL_EXPORT(SetHScrollbarScrollPos, PartsEngine_SetHScrollbarScrollPos),
+	    HLL_EXPORT(SetHScrollbarScrollRate, PartsEngine_SetHScrollbarScrollRate),
+	    HLL_EXPORT(SetHScrollbarMoveSizeByButton, PartsEngine_SetHScrollbarMoveSizeByButton),
+	    HLL_EXPORT(GetHScrollbarTotalSize, PartsEngine_GetHScrollbarTotalSize),
+	    HLL_EXPORT(GetHScrollbarViewSize, PartsEngine_GetHScrollbarViewSize),
+	    HLL_EXPORT(GetHScrollbarScrollPos, PartsEngine_GetHScrollbarScrollPos),
+	    HLL_EXPORT(GetHScrollbarScrollRate, PartsEngine_GetHScrollbarScrollRate),
+	    HLL_EXPORT(GetHScrollbarMoveSizeByButton, PartsEngine_GetHScrollbarMoveSizeByButton),
 	    HLL_TODO_EXPORT(SetHScrollbarCGName, PartsEngine_SetHScrollbarCGName),
 	    HLL_TODO_EXPORT(GetHScrollbarCGName, PartsEngine_GetHScrollbarCGName),
 	    HLL_TODO_EXPORT(SetTextBoxSize, PartsEngine_SetTextBoxSize),

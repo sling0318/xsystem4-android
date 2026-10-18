@@ -425,6 +425,7 @@ struct parts {
 	// back; it is deliberately not part of the parts save stream.
 	bool checked;
 	int checkbox_color[3];
+	struct parts_scroll scroll;
 	bool draggable;
 	int on_cursor_sound;
 	int on_click_sound;

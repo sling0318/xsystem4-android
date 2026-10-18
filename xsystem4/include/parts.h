@@ -142,6 +142,32 @@ bool PE_parts_checked(int parts_no);
 void PE_parts_set_checkbox_color(int parts_no, int r, int g, int b);
 // channel: 0=R 1=G 2=B; returns 255 for an unknown part or channel
 int PE_parts_checkbox_color(int parts_no, int channel);
+
+/*
+ * Scroll-bar state (.pactex 的 横/縦スクロール 控件, パーツタイプ 3).
+ *
+ * Every field here is written by the game and read back by the game -- the
+ * engine gives it no meaning. It matters because CConfigView@SetHScrollRateForAsra
+ * and setConfigParamFromSliderValue drive the config page's sliders through it
+ * every frame: with the whole family stubbed, the reads came back 0 and that
+ * page never finished its own update.
+ * Deliberately not part of the parts save stream; the activity rebuild re-sets it.
+ */
+struct parts_scroll {
+	int total_size;
+	int view_size;
+	int scroll_pos;
+	float scroll_rate;
+	int button_a;		// 横: 左端按钮宽 / 縦: 上端按钮高
+	int button_b;		// 横: 右端按钮宽 / 縦: 下端按钮高
+	int move_by_button;
+	int width;
+	int height;
+};
+
+// Returns NULL for an unknown part number. H and V share one struct: a part is
+// never both.
+struct parts_scroll *PE_parts_scroll(int parts_no);
 void PE_clear_back_scene_flags(void);
 bool PE_save_thumbnail(struct string *filename, int reduction_factor);
 bool PE_init_parts_movie(int parts_no, int width, int height, int bg_r, int bg_g, int bg_b, int state);

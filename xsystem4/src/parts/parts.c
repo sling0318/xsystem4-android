@@ -2267,6 +2267,12 @@ int PE_parts_checkbox_color(int parts_no, int channel)
 	return parts->checkbox_color[channel];
 }
 
+struct parts_scroll *PE_parts_scroll(int parts_no)
+{
+	struct parts *parts = parts_try_get(parts_no);
+	return parts ? &parts->scroll : NULL;
+}
+
 void PE_clear_back_scene_flags(void)
 {
 	struct parts *parts;
