@@ -711,7 +711,7 @@ static void load_numeral_fonts(struct iarray_reader *r)
 	}
 }
 
-static bool parts_engine_save(struct page **buffer, bool save_hidden)
+static bool parts_engine_save(struct page **buffer, bool save_hidden, bool only_back_scene)
 {
 	// get parts into clean state first
 	PE_UpdateComponent(0);
@@ -733,7 +733,7 @@ static bool parts_engine_save(struct page **buffer, bool save_hidden)
 	PARTS_LIST_FOREACH(parts) {
 		if (!save_hidden && !parts->global.show)
 			continue;
-		if (!parts->want_save)
+		if (only_back_scene ? !parts->want_back_scene : !parts->want_save)
 			continue;
 		save_parts(&w, parts);
 		count++;
@@ -753,12 +753,39 @@ static bool parts_engine_save(struct page **buffer, bool save_hidden)
 
 bool PE_SaveWithoutHideParts(struct page **buffer)
 {
-	return parts_engine_save(buffer, false);
+	return parts_engine_save(buffer, false, false);
 }
 
 bool PE_Save(struct page **buffer)
 {
-	return parts_engine_save(buffer, true);
+	return parts_engine_save(buffer, true, false);
+}
+
+// The "back scene" (画面保管) is the subset of parts the game asked to have
+// snapshotted; it's stored in the same format so only the filter differs.
+bool PE_SaveBackScene(struct page **buffer)
+{
+	return parts_engine_save(buffer, true, true);
+}
+
+bool PE_LoadBackScene(struct page **buffer)
+{
+	static bool warned = false;
+	if (!(*buffer)) {
+		WARNING("back scene array is empty");
+		return false;
+	}
+	struct iarray_reader r;
+	if (!iarray_init_reader(&r, *buffer, "XPE")) {
+		WARNING("unrecognized back scene magic");
+		return false;
+	}
+	if (!warned) {
+		WARNING("back scenes can be saved but not restored yet; "
+			"LoadBackScene accepts the snapshot and leaves the screen alone");
+		warned = true;
+	}
+	return true;
 }
 
 bool PE_Load(struct page **buffer)

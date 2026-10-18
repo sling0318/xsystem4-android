@@ -372,6 +372,27 @@ static int PartsEngine_PartsFunc(int func_id, struct page **array_int,
 
 HLL_WARN_UNIMPLEMENTED(, void, PartsEngine, StopSoundWithoutSystemSound);
 
+/*
+ * 画面保管 ("back scene"): the game marks the parts whose state it wants kept
+ * across a scene switch, then asks for just those to be serialised. Without
+ * SaveBackScene it treats the missing answer as a failure and raises
+ * "画面保管においてパーツライブラリの保存に失敗しました" on every message.
+ */
+static void PartsEngine_SetWantSaveBackScene(int parts_no, bool want)
+{
+	PE_parts_set_want_back_scene(parts_no, want);
+}
+
+static bool PartsEngine_IsWantSaveBackScene(int parts_no)
+{
+	return PE_parts_want_back_scene(parts_no);
+}
+
+static void PartsEngine_ClearBackScene(void)
+{
+	PE_clear_back_scene_flags();
+}
+
 static void PartsEngine_PreLink(void);
 
 HLL_LIBRARY(PartsEngine,
@@ -542,6 +563,11 @@ HLL_LIBRARY(PartsEngine,
 	    HLL_EXPORT(Save, PE_Save),
 	    HLL_EXPORT(SaveWithoutHideParts, PE_SaveWithoutHideParts),
 	    HLL_EXPORT(Load, PE_Load),
+	    HLL_EXPORT(SaveBackScene, PE_SaveBackScene),
+	    HLL_EXPORT(LoadBackScene, PE_LoadBackScene),
+	    HLL_EXPORT(SetWantSaveBackScene, PartsEngine_SetWantSaveBackScene),
+	    HLL_EXPORT(IsWantSaveBackScene, PartsEngine_IsWantSaveBackScene),
+	    HLL_EXPORT(ClearBackScene, PartsEngine_ClearBackScene),
 	    // Rance 9
 	    HLL_EXPORT(PartsFunc, PartsEngine_PartsFunc),
 	    HLL_EXPORT(Release, PE_ReleaseParts),
