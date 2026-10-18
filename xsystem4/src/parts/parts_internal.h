@@ -20,6 +20,7 @@
 #include <cglm/types.h>
 #include "gfx/gfx.h"
 #include "gfx/font.h"
+#include "parts.h"
 #include "queue.h"
 #include "scene.h"
 #include "swf.h"
