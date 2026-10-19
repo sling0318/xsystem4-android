@@ -1127,6 +1127,42 @@ static void parts_update_component(struct parts *parts)
 	}
 }
 
+// Diagnostic: dump the parts list in draw order. The list is sorted by
+// (sprite z, sprite z2), which under the multi-controller layout means
+// (controller_no, global.z). Written to settle "the second config page comes
+// up blank": it shows whether the invisible parts are actually below something
+// opaque, or simply not in the list. Dumps at most `budget` times and only
+// when the entry count changed, so loading a page produces one dump.
+static int parts_dump_frames;
+static int parts_dump_last_count = -1;
+static int parts_dump_budget = 20;
+
+static void parts_dump_order(void)
+{
+	parts_dump_frames++;
+	if (!config.trace_vm || parts_dump_budget <= 0 || parts_dump_frames < 20)
+		return;
+	struct parts *p;
+	int n = 0;
+	PARTS_LIST_FOREACH(p)
+		n++;
+	if (n == parts_dump_last_count)
+		return;
+	parts_dump_frames = 0;
+	parts_dump_last_count = n;
+	parts_dump_budget--;
+	WARNING("PDUMP %d parts, draw order lowest first", n);
+	int i = 0;
+	PARTS_LIST_FOREACH(p) {
+		WARNING("PDUMP %d no=%d sp=%p z=%d z2=%d gz=%d lz=%d show=%d alpha=%d pos=%d,%d st=%d ctrl=%d par=%d",
+				i++, p->no, (void *)&p->sp, p->sp.z, p->sp.z2, p->global.z, p->local.z,
+				p->global.show, (int)p->global.alpha,
+				p->global.pos.x, p->global.pos.y,
+				p->states[0].type, p->controller_no,
+				p->parent ? p->parent->no : -1);
+	}
+}
+
 void PE_UpdateComponent(possibly_unused int passed_time)
 {
 	// After loading a save, the game script may compute a negative time delta
@@ -1164,6 +1200,8 @@ void PE_UpdateComponent(possibly_unused int passed_time)
 		// update child params
 		parts_update_component(parts);
 	}
+
+	parts_dump_order();
 }
 
 bool parts_message_window_show = true;

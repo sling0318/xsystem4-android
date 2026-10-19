@@ -73,6 +73,34 @@ void scene_unregister_sprite(struct sprite *sp)
 	scene_dirty();
 }
 
+// Diagnostic companion to parts_dump_order(): the parts list is bookkeeping,
+// the draw order actually comes from this sprite list. Printing it lets the two
+// be cross-checked by sprite address. Same change-triggered throttle.
+static int scene_dump_frames;
+static int scene_dump_last_count = -1;
+static int scene_dump_budget = 20;
+
+static void scene_dump_order(void)
+{
+	scene_dump_frames++;
+	if (!config.trace_vm || scene_dump_budget <= 0 || scene_dump_frames < 20)
+		return;
+	struct sprite *q;
+	int n = 0;
+	TAILQ_FOREACH(q, &sprite_list, entry)
+		n++;
+	if (n == scene_dump_last_count)
+		return;
+	scene_dump_frames = 0;
+	scene_dump_last_count = n;
+	scene_dump_budget--;
+	WARNING("SDUMP %d sprites, draw order lowest first", n);
+	int i = 0;
+	TAILQ_FOREACH(q, &sprite_list, entry) {
+		WARNING("SDUMP %d sp=%p z=%d z2=%d id=%d", i++, (void *)q, q->z, q->z2, q->id);
+	}
+}
+
 void scene_render(void)
 {
 	gfx_clear();
@@ -80,6 +108,8 @@ void scene_render(void)
 		Rectangle r = RECT(0, 0, wp.w, wp.h);
 		gfx_render_texture(&wp, &r);
 	}
+
+	scene_dump_order();
 
 	struct sprite *sp;
 	TAILQ_FOREACH(sp, &sprite_list, entry) {
