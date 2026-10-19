@@ -2306,7 +2306,7 @@ void parts_scroll_set_rate(struct parts *parts, float rate)
 	int range = s->total_size - s->view_size;
 	if (range > 0)
 		s->scroll_pos = (int)(rate * range + 0.5f);
-	parts->dirty = true;
+	parts_component_dirty(parts);
 }
 
 void PE_parts_scroll_set_rate(int parts_no, float rate)
