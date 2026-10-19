@@ -901,8 +901,16 @@ static int activity_walk_part(struct pe_activity *act, struct ex_tree *part, int
 	int origin_mode = act_int(part, ACT_N_ORIGIN, 0);
 	if (origin_mode)
 		PE_SetPartsOriginPosMode(no, origin_mode);
-	if (act_int(part, ACT_N_SHOW, 1))
-		PE_SetShow(no, true);
+	/*
+	 * 表示 is a part's display flag, and the engine default is show=true, so
+	 * the previous "if (act_int(part, ACT_N_SHOW, 1)) PE_SetShow(no, true)"
+	 * form was a no-op for both values: 1 matched the default, and 0 was never
+	 * applied at all. Two parts of 配置／０２／メッセージページ.pactex carry
+	 * 表示=0 (その他ラベル and メッセージウィンドウのアニメーションをおこなう,
+	 * both children of the メッセージページ group) and stayed visible only
+	 * because the ancestor group was hidden.
+	 */
+	PE_SetShow(no, act_int(part, ACT_N_SHOW, 1));
 	PE_SetPartsMessageWindowShowLink(no, act_int(part, ACT_N_MSG_LINK, 0));
 	PE_SetAlpha(no, act_int(part, ACT_N_ALPHA, 255));
 	struct ex_value *add = act_leaf(part, ACT_N_ADD_COLOR);
@@ -988,9 +996,8 @@ static int activity_walk_part(struct pe_activity *act, struct ex_tree *part, int
 	 * runtime "hide this part" switch. Mapping it to PE_SetShow(false) blanked
 	 * most of the second config page (配置／０２／メッセージページ.pactex).
 	 * Evidence:
-	 *  - "表示" is the real hide switch: exactly two parts of that activity
-	 *    carry 表示=0, and those two are the only ones the loader logs as
-	 *    show=0;
+	 *  - "表示" is the real display flag and is honored just above; that activity
+ *    has exactly two 表示=0 parts, both children of the メッセージページ group;
 	 *  - the whole activity has exactly seven 閉じている=1 marks and they land
 	 *    on nodes with no runtime meaning: the 右下ボタングループ group, the
 	 *    メッセージページ group, three descendants of it (the checkbox
