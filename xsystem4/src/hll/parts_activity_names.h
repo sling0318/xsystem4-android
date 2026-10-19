@@ -60,6 +60,8 @@
 #define ACT_N_SFX_1 "\xa3\xaf\xa5\xaa\xa5\xf3"  /* ／オン */
 #define ACT_N_SFX_2 "\xa3\xaf\xa5\xc0\xa5\xa6\xa5\xf3"  /* ／ダウン */
 #define ACT_N_SFX_OFF "\xa3\xaf\x9f\x6f\x84\xbf"  /* ／無効 */
+#define ACT_N_SFX_BAR "\xa3\xaf\xa5\xd0\xa9\x60"  /* ／バー */
+#define ACT_N_SFX_BG "\xa3\xaf\xb1\xb3\xbe\xb0"  /* ／背景 */
 #define ACT_N_FLAT_NAME "\xa5\xd5\xa5\xe9\xa5\xc3\xa5\xc8\xc3\xfb"  /* フラット名 */
 #define ACT_N_SCR_LENGTH "\xe9\x4c\xa4\xb5"  /* 長さ */
 #define ACT_N_SCR_THICK "\xb7\xf9"  /* 幅 */

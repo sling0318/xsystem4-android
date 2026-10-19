@@ -1064,11 +1064,16 @@ static int activity_walk_part(struct pe_activity *act, struct ex_tree *part, int
 			struct ex_value *rate = act_leaf(info, ACT_N_SCR_RATE);
 			if (rate && rate->type == EX_FLOAT)
 				s->scroll_rate = rate->f;
-			// the ＣＧ名 here is the thumb; the track is only a number pair
+			// ＣＧ名 here is a family prefix, not a CG: the archive carries the
+			// thumb as <base>／／バー／通常… and the track as <base>／／背景, and
+			// the game never calls SetHScrollbarCGName, so the engine has to
+			// resolve it. Setting the bare base draws nothing.
 			struct ex_value *scg = act_leaf(info, ACT_N_CG_NAME);
 			if (scg && scg->type == EX_STRING && *(scg->s->text)) {
-				for (int st = 0; st < ACT_NR_STATES; st++)
-					PE_SetPartsCG(no, scg, 0, st + 1);
+				struct string *thumb = string_dup(scg->s);
+				string_append_cstr(&thumb, ACT_N_SFX_BAR, strlen(ACT_N_SFX_BAR));
+				activity_set_button_cg(no, thumb, true);
+				free_string(thumb);
 			}
 			break;
 		}
