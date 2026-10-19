@@ -245,13 +245,86 @@ static void parts_layout_calc_size_vertical(struct parts_layout_box *lb, struct 
 	*out_h = max_col_h + lb->padding_top + lb->padding_bottom;
 }
 
+/*
+ * Content bounds of `parts`, expressed in the coordinate system of its own
+ * anchor point (i.e. before its own origin-mode offset is applied).
+ *
+ * A container carries no graphic and the .pactex has no サイズ field for it, so
+ * its size has to be derived from what its children occupy. That size is what
+ * lets 原点座標モード move the whole group: parts_child_origin() offsets every
+ * child by calculate_offset(origin_mode, w, h).
+ *
+ * Must be recursive rather than reading the children's stored w/h, because
+ * parts_update_component() lays a container out before its children, so a
+ * nested container's size is still stale at that point.
+ */
+static bool parts_content_bbox(struct parts *parts, Rectangle *out)
+{
+	if (parts->scroll.width > 0 && parts->scroll.height > 0) {
+		*out = (Rectangle) { 0, 0, parts->scroll.width, parts->scroll.height };
+		return true;
+	}
+
+	bool any = false;
+	Rectangle acc = { 0, 0, 0, 0 };
+	struct parts *child;
+	PARTS_FOREACH_CHILD(child, parts) {
+		Rectangle cb;
+		if (!parts_content_bbox(child, &cb))
+			continue;
+		int x0 = cb.x + child->local.pos.x;
+		int y0 = cb.y + child->local.pos.y;
+		int x1 = x0 + cb.w;
+		int y1 = y0 + cb.h;
+		if (!any) {
+			acc = (Rectangle) { x0, y0, cb.w, cb.h };
+			any = true;
+		} else {
+			int ax0 = acc.x < x0 ? acc.x : x0;
+			int ay0 = acc.y < y0 ? acc.y : y0;
+			int ax1 = acc.x + acc.w > x1 ? acc.x + acc.w : x1;
+			int ay1 = acc.y + acc.h > y1 ? acc.y + acc.h : y1;
+			acc = (Rectangle) { ax0, ay0, ax1 - ax0, ay1 - ay0 };
+		}
+	}
+
+	if (any) {
+		// The children hang off this node's child-origin, which carries its own
+		// origin-mode offset; report the bounds as seen by our parent, i.e.
+		// after that shift.
+		Point off = calculate_offset(parts->origin_mode, acc.w, acc.h);
+		acc.x += off.x;
+		acc.y += off.y;
+		*out = acc;
+		return true;
+	}
+
+	struct parts_state *state = &parts->states[0];
+	if (state->common.w == 0 && state->common.h == 0)
+		return false;
+	*out = (Rectangle) {
+		state->common.origin_offset.x, state->common.origin_offset.y,
+		state->common.w, state->common.h
+	};
+	return true;
+}
+
 void parts_do_layout(struct parts *parts)
 {
 	if (parts->states[0].type != PARTS_LAYOUT_BOX)
 		return;
 	struct parts_layout_box *lb = &parts->states[0].layout_box;
-	if (lb->layout_type == PARTS_LAYOUT_FREE)
+	if (lb->layout_type == PARTS_LAYOUT_FREE) {
+		// Free layout leaves the children where the .pactex put them and never
+		// gives the box a size; derive one from the children so that
+		// origin_mode can still offset the whole group. Storing it also
+		// refreshes lb->common.origin_offset, which parts_child_origin() and
+		// input.c read.
+		Rectangle bbox;
+		if (parts_content_bbox(parts, &bbox))
+			parts_set_dims(parts, &lb->common, bbox.w, bbox.h);
 		return;
+	}
 
 	int total_w, total_h;
 	if (lb->layout_type == PARTS_LAYOUT_HORIZONTAL)

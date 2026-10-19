@@ -388,7 +388,7 @@ struct parts_3dlayer *parts_get_3dlayer(struct parts *parts, int state)
 	return &parts->states[state].layer3d;
 }
 
-static Point calculate_offset(int mode, int w, int h)
+Point calculate_offset(int mode, int w, int h)
 {
 	switch (mode) {
 	case 1:  return (Point) {    0, 0    }; // top-left
@@ -440,16 +440,37 @@ void parts_recalculate_hitbox(struct parts *parts)
 	}
 }
 
-static void parts_update_global_pos(struct parts *parts, Point parent_pos)
+/*
+ * The point a part's children hang off. For an ordinary part that is just its
+ * own anchor (global.pos); for a layout-box container it also carries the
+ * container's 原点座標モード offset, so that changing the mode moves the whole
+ * group instead of only the (graphic-less) container. Non-free layout boxes
+ * keep common.w/h == 0, hence a zero offset here (their layout code already
+ * bakes the origin shift into the children's local positions).
+ */
+Point parts_child_origin(struct parts *parts)
+{
+	Point origin = parts->global.pos;
+	if (parts->states[0].type == PARTS_LAYOUT_BOX) {
+		origin.x += parts->states[0].layout_box.common.origin_offset.x;
+		origin.y += parts->states[0].layout_box.common.origin_offset.y;
+	}
+	return origin;
+}
+
+// `parent_origin` is the child-origin of the parent (parts_child_origin), not
+// the parent's own anchor.
+static void parts_update_global_pos(struct parts *parts, Point parent_origin)
 {
 	parts->global.pos = (Point) {
-		parent_pos.x + parts->local.pos.x,
-		parent_pos.y + parts->local.pos.y
+		parent_origin.x + parts->local.pos.x,
+		parent_origin.y + parts->local.pos.y
 	};
 
+	Point origin = parts_child_origin(parts);
 	struct parts *child;
 	PARTS_FOREACH_CHILD(child, parts) {
-		parts_update_global_pos(child, parts->global.pos);
+		parts_update_global_pos(child, origin);
 	}
 }
 
@@ -458,7 +479,11 @@ void parts_set_pos(struct parts *parts, Point pos)
 	parts->local.pos.x = pos.x;
 	parts->local.pos.y = pos.y;
 	parts_recalculate_hitbox(parts);
-	parts_update_global_pos(parts, parts->parent ? parts->parent->global.pos : root_params.pos);
+	parts_update_global_pos(parts, parts->parent ? parts_child_origin(parts->parent) : root_params.pos);
+	// Moving a child changes its container's content bounds, so the container's
+	// origin-mode offset (and thus every sibling's position) may change too.
+	if (parts->parent && parts->parent->states[0].type == PARTS_LAYOUT_BOX)
+		parts_component_dirty(parts->parent);
 	parts_dirty(parts);
 }
 
@@ -1114,6 +1139,12 @@ static void parts_update_component(struct parts *parts)
 {
 	parts_combine_params(parts->parent ? &parts->parent->global : &root_params,
 			&parts->local, &parts->global);
+	// parts_combine_params only sums the parent's anchor; a layout-box parent
+	// additionally shifts its children by its 原点座標モード offset.
+	if (parts->parent && parts->parent->states[0].type == PARTS_LAYOUT_BOX) {
+		parts->global.pos.x += parts->parent->states[0].layout_box.common.origin_offset.x;
+		parts->global.pos.y += parts->parent->states[0].layout_box.common.origin_offset.y;
+	}
 	if (parts_get_sprite_z(parts) != parts->sp.z
 			|| parts_get_sprite_z2(parts) != parts->sp.z2) {
 		parts_list_resort(parts);

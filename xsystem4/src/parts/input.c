@@ -55,8 +55,10 @@ static bool parts_hittest(struct parts *parts, int state, Point pos)
 	}
 	Rectangle hitbox = parts->states[state].common.hitbox;
 	if (parts->parent) {
-		hitbox.x += parts->parent->global.pos.x;
-		hitbox.y += parts->parent->global.pos.y;
+		// global.pos - local.pos is the parent's child-origin, i.e. the parent's
+		// anchor plus (for a layout-box parent) its 原点座標モード offset.
+		hitbox.x += parts->global.pos.x - parts->local.pos.x;
+		hitbox.y += parts->global.pos.y - parts->local.pos.y;
 	}
 	return SDL_PointInRect(&pos, &hitbox);
 }

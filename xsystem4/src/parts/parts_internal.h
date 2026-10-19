@@ -637,6 +637,12 @@ void parts_flat_emitter_resolve_layer(
 
 // layoutbox.c
 void parts_do_layout(struct parts *parts);
+// 9-cell origin-mode offset (origin_mode, content w/h) -> anchor-relative shift.
+Point calculate_offset(int mode, int w, int h);
+// Point that a part's children are positioned relative to: the part's own anchor
+// plus, for a layout-box container, the container's origin-mode offset. This is
+// what makes 原点座標モード move a whole group, not just a leaf's own graphic.
+Point parts_child_origin(struct parts *parts);
 
 // debug.c
 struct sprite;
