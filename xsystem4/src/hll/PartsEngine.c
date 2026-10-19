@@ -458,8 +458,6 @@ SCROLL_INT(H, TotalSize, total_size)
 SCROLL_INT(V, TotalSize, total_size)
 SCROLL_INT(H, ViewSize, view_size)
 SCROLL_INT(V, ViewSize, view_size)
-SCROLL_INT(H, ScrollPos, scroll_pos)
-SCROLL_INT(V, ScrollPos, scroll_pos)
 SCROLL_INT(H, MoveSizeByButton, move_by_button)
 SCROLL_INT(V, MoveSizeByButton, move_by_button)
 SCROLL_INT(H, LeftWidth, button_a)
@@ -467,11 +465,37 @@ SCROLL_INT(V, UpHeight, button_a)
 SCROLL_INT(H, RightWidth, button_b)
 SCROLL_INT(V, DownHeight, button_b)
 
-static void PartsEngine_SetHScrollbarScrollRate(int parts_no, float rate)
+static int PartsEngine_GetHScrollbarScrollPos(int parts_no)
 {
 	struct parts_scroll *s = PE_parts_scroll(parts_no);
-	if (s)
-		s->scroll_rate = rate;
+	return s ? s->scroll_pos : 0;
+}
+
+// 位置 and レート are two views of the same knob; the game writes one and polls
+// the other, so either setter has to keep the pair consistent.
+static void PartsEngine_SetHScrollbarScrollPos(int parts_no, int pos)
+{
+	struct parts_scroll *s = PE_parts_scroll(parts_no);
+	if (!s)
+		return;
+	s->scroll_pos = pos;
+	int range = s->total_size - s->view_size;
+	PE_parts_scroll_set_rate(parts_no, range > 0 ? (float)pos / range : 0.0f);
+}
+
+static int PartsEngine_GetVScrollbarScrollPos(int parts_no)
+{
+	return PartsEngine_GetHScrollbarScrollPos(parts_no);
+}
+
+static void PartsEngine_SetVScrollbarScrollPos(int parts_no, int pos)
+{
+	PartsEngine_SetHScrollbarScrollPos(parts_no, pos);
+}
+
+static void PartsEngine_SetHScrollbarScrollRate(int parts_no, float rate)
+{
+	PE_parts_scroll_set_rate(parts_no, rate);
 }
 
 static float PartsEngine_GetHScrollbarScrollRate(int parts_no)
@@ -1035,6 +1059,12 @@ static int activity_walk_part(struct pe_activity *act, struct ex_tree *part, int
 			struct ex_value *rate = act_leaf(info, ACT_N_SCR_RATE);
 			if (rate && rate->type == EX_FLOAT)
 				s->scroll_rate = rate->f;
+			// the ＣＧ名 here is the thumb; the track is only a number pair
+			struct ex_value *scg = act_leaf(info, ACT_N_CG_NAME);
+			if (scg && scg->type == EX_STRING && *(scg->s->text)) {
+				for (int st = 0; st < ACT_NR_STATES; st++)
+					PE_SetPartsCG(no, scg, 0, st + 1);
+			}
 			break;
 		}
 		case 10:

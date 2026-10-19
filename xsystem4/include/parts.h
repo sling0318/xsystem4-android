@@ -168,6 +168,9 @@ struct parts_scroll {
 // Returns NULL for an unknown part number. H and V share one struct: a part is
 // never both.
 struct parts_scroll *PE_parts_scroll(int parts_no);
+// Sets the rate and keeps scroll_pos in step with it, so the two never disagree
+// whichever of them the game polls.
+void PE_parts_scroll_set_rate(int parts_no, float rate);
 void PE_clear_back_scene_flags(void);
 bool PE_save_thumbnail(struct string *filename, int reduction_factor);
 bool PE_init_parts_movie(int parts_no, int width, int height, int bg_r, int bg_g, int bg_b, int state);

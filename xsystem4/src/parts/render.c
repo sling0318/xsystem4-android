@@ -147,7 +147,8 @@ static void parts_render_cg(struct parts *parts, struct parts_common *common)
 	set_draw_filter_blend_func(parts->draw_filter);
 
 	mat4 mw_transform = GLM_MAT4_IDENTITY_INIT;
-	glm_translate(mw_transform, (vec3) { parts->global.pos.x, parts->global.pos.y, 0 });
+	glm_translate(mw_transform, (vec3) { parts->global.pos.x + parts_scroll_offset(parts),
+			parts->global.pos.y, 0 });
 	// FIXME: need perspective for 3D rotate
 	//glm_rotate_x(mw_transform, parts->rotation.x, mw_transform);
 	//glm_rotate_y(mw_transform, parts->rotation.y, mw_transform);

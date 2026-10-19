@@ -43,6 +43,16 @@ static struct parts *drop_target = NULL;
 
 static bool parts_hittest(struct parts *parts, int state, Point pos)
 {
+	/*
+	 * A scroll bar's graphic is just the thumb, but the thing the player grabs
+	 * is the whole track -- and the track size only lives in parts_scroll, so
+	 * the generic hitbox (the thumb's own rectangle) cannot describe it.
+	 */
+	if (parts->scroll.width > 0 && parts->scroll.height > 0) {
+		Rectangle track = { parts->global.pos.x, parts->global.pos.y,
+				parts->scroll.width, parts->scroll.height };
+		return SDL_PointInRect(&pos, &track);
+	}
 	Rectangle hitbox = parts->states[state].common.hitbox;
 	if (parts->parent) {
 		hitbox.x += parts->parent->global.pos.x;
@@ -131,6 +141,19 @@ static void parts_update_mouse(struct parts *parts, Point cur_pos, bool cur_clic
 
 		// KEY_TRIGGER message fires on press transition
 		parts_msg_push(parts, PARTS_MSG_KEY_TRIGGER, "i", VK_LBUTTON);
+	}
+
+	/*
+	 * A scroll bar part is one thumb graphic riding on a track: the game never
+	 * moves it, it only polls GetHScrollbarScrollRate every frame. So the
+	 * engine has to turn "cursor somewhere in the track" into that rate itself.
+	 */
+	if (parts->scroll.width > 0 && cur_clicking && click_down_parts == parts->no) {
+		int span = parts->scroll.width - parts->states[parts->state].common.texture.w;
+		if (span > 0) {
+			float rate = (float)(cur_pos.x - parts->global.pos.x) / span;
+			parts_scroll_set_rate(parts, rate);
+		}
 	}
 
 	// KEY_DOWN message fires every frame while held (not first frame)

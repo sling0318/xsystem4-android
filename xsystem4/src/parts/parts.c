@@ -2273,6 +2273,49 @@ struct parts_scroll *PE_parts_scroll(int parts_no)
 	return parts ? &parts->scroll : NULL;
 }
 
+// Rance 03's config sliders are a single part: the ＣＧ名 in 種類別情報 is the
+// thumb, 長さ is the whole track. The part's own position stays at the track
+// origin -- hit testing uses a rectangle the size of the track -- and only the
+// graphic slides, so the offset is applied at draw time.
+int parts_scroll_offset(struct parts *parts)
+{
+	struct parts_scroll *s = &parts->scroll;
+	if (s->width <= 0)
+		return 0;
+	int span = s->width - parts->states[parts->state].common.texture.w;
+	if (span <= 0)
+		return 0;
+	float rate = s->scroll_rate;
+	if (rate <= 0)
+		return 0;
+	if (rate >= 1)
+		return span;
+	return (int)(rate * span + 0.5f);
+}
+
+void parts_scroll_set_rate(struct parts *parts, float rate)
+{
+	struct parts_scroll *s = &parts->scroll;
+	if (rate < 0)
+		rate = 0;
+	if (rate > 1)
+		rate = 1;
+	if (s->scroll_rate == rate)
+		return;
+	s->scroll_rate = rate;
+	int range = s->total_size - s->view_size;
+	if (range > 0)
+		s->scroll_pos = (int)(rate * range + 0.5f);
+	parts->dirty = true;
+}
+
+void PE_parts_scroll_set_rate(int parts_no, float rate)
+{
+	struct parts *parts = parts_try_get(parts_no);
+	if (parts)
+		parts_scroll_set_rate(parts, rate);
+}
+
 void PE_clear_back_scene_flags(void)
 {
 	struct parts *parts;

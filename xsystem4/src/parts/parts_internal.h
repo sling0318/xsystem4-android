@@ -487,6 +487,10 @@ void parts_set_scale_y(struct parts *parts, float mag);
 void parts_set_rotation_z(struct parts *parts, float rot);
 void parts_set_alpha(struct parts *parts, int alpha);
 void parts_set_state(struct parts *parts, enum parts_state_type state);
+// How far a scroll-bar part's graphic sits along its track for the current
+// scroll rate. Zero for anything that is not a scroll bar.
+int parts_scroll_offset(struct parts *parts);
+void parts_scroll_set_rate(struct parts *parts, float rate);
 void parts_release(int parts_no);
 void parts_release_all(void);
 void parts_set_surface_area(struct parts *parts, struct parts_common *common, int x, int y, int w, int h);
