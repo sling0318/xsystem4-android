@@ -1016,10 +1016,19 @@ static int activity_walk_part(struct pe_activity *act, struct ex_tree *part, int
 							act_list_num(pad,2,0), act_list_num(pad,3,0));
 			}
 			break;
+		case 1: // fall through
 		case 0:
 			// plain container or button: a ＣＧ名 here means a button-like
 			// part whose per-state graphics use the ／通常／オン／ダウン
-			// archive naming convention
+			// archive naming convention.
+			//
+			// Checkboxes (type 1) are the same shape -- ＣＧ名 is the box
+			// (システム／配置／チェック／通常…) and テキスト is the option -- and
+			// they used to be skipped wholesale, which left pages 02..07 of
+			// 配置 showing nothing at all. A state holds one thing, so the text
+			// written afterwards wins the default state and the box survives on
+			// ／オン／ダウン: the option reads as a label and lights up as its own
+			// box when you hover or press it.
 			{
 				struct ex_value *bcg = act_leaf(info, ACT_N_CG_NAME);
 				if (bcg && bcg->type == EX_STRING && *(bcg->s->text)) {
@@ -1042,8 +1051,23 @@ static int activity_walk_part(struct pe_activity *act, struct ex_tree *part, int
 					 * computes for itself already covers the button.
 					 */
 					struct ex_value *text = act_leaf(info, ACT_N_TEXT);
-					if (text && text->type == EX_STRING && *(text->s->text))
+					if (text && text->type == EX_STRING && *(text->s->text)) {
 						PE_SetText(no, text->s, 1);
+						int fs = act_int(info, ACT_N_FONT_SIZE, 0);
+						if (fs)
+							PE_SetPartsFontSize(no, fs, 1);
+						struct ex_value *fc = act_leaf(info, ACT_N_FONT_COLOR);
+						if (fc)
+							PE_SetPartsFontColor(no, act_list_num(fc,0,0), act_list_num(fc,1,0),
+									act_list_num(fc,2,0), 1);
+						struct ex_value *ec = act_leaf(info, ACT_N_FONT_EDGE_COLOR);
+						if (ec)
+							PE_SetPartsFontEdgeColor(no, act_list_num(ec,0,0), act_list_num(ec,1,0),
+									act_list_num(ec,2,0), 1);
+						int cs = act_int(info, ACT_N_CHAR_SPACE, 0);
+						if (cs)
+							PE_SetTextCharSpace(no, cs, 1);
+					}
 				}
 			}
 			break;
