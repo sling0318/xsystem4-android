@@ -991,10 +991,13 @@ static int activity_walk_part(struct pe_activity *act, struct ex_tree *part, int
 	 *  - "表示" is the real hide switch: exactly two parts of that activity
 	 *    carry 表示=0, and those two are the only ones the loader logs as
 	 *    show=0;
-	 *  - the whole activity has seven 閉じている=1 marks and they land on nodes
-	 *    with no runtime meaning: the 右下ボタングループ group, the
-	 *    メッセージページ group, three of that group's children, and the two
-	 *    tabs whose 遷移先 points back at this very page;
+	 *  - the whole activity has exactly seven 閉じている=1 marks and they land
+	 *    on nodes with no runtime meaning: the 右下ボタングループ group, the
+	 *    メッセージページ group, three descendants of it (the checkbox
+	 *    SYS_オートモードをクリックで解除する and the colour-swatch caps
+	 *    SYS_已读信息的颜色:5:蓋 / :11:蓋), and the two tabs
+	 *    (メッセージ速度ボタン / メッセージボタン) whose 遷移先 points back at
+	 *    this very page;
 	 *  - hiding those seven is exactly what the screen was missing -- the body
 	 *    and the two left-most tabs vanished while the tab bar's other five and
 	 *    the background drew fine, and page 1, which has no marked part at all,
