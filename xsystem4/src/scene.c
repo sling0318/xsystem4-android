@@ -75,24 +75,30 @@ void scene_unregister_sprite(struct sprite *sp)
 
 // Diagnostic companion to parts_dump_order(): the parts list is bookkeeping,
 // the draw order actually comes from this sprite list. Printing it lets the two
-// be cross-checked by sprite address. Same change-triggered throttle.
-static int scene_dump_frames;
-static int scene_dump_last_count = -1;
-static int scene_dump_budget = 20;
+// be cross-checked by sprite address - a part that hit-tests but never draws
+// will show up in the first dump and not in this one. One dump per settled
+// screen (20 frames after the sprite count last changed), capped.
+static int scene_dump_frame;
+static int scene_dump_prev_count = -1;
+static int scene_dump_stable;
+static int scene_dump_budget = 40;
 
 static void scene_dump_order(void)
 {
-	scene_dump_frames++;
-	if (!config.trace_vm || scene_dump_budget <= 0 || scene_dump_frames < 20)
+	scene_dump_frame++;
+	if (!config.trace_vm || scene_dump_budget <= 0)
 		return;
 	struct sprite *q;
 	int n = 0;
 	TAILQ_FOREACH(q, &sprite_list, entry)
 		n++;
-	if (n == scene_dump_last_count)
+	if (n != scene_dump_prev_count) {
+		scene_dump_prev_count = n;
+		scene_dump_stable = 0;
 		return;
-	scene_dump_frames = 0;
-	scene_dump_last_count = n;
+	}
+	if (++scene_dump_stable != 20)
+		return;
 	scene_dump_budget--;
 	WARNING("SDUMP %d sprites, draw order lowest first", n);
 	int i = 0;

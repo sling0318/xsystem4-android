@@ -503,6 +503,10 @@ static void parts_update_global_show(struct parts *parts, bool parent_show)
 	}
 }
 
+// Defined next to parts_update_component(); declared here so that a show/hide
+// can be logged at the moment the game asks for it.
+static bool parts_dump_order(const char *why);
+
 void parts_set_show(struct parts *parts, bool show)
 {
 	if (parts->local.show == show)
@@ -511,6 +515,7 @@ void parts_set_show(struct parts *parts, bool show)
 	parts->local.show = show;
 	parts_update_global_show(parts, parts->parent ? parts->parent->global.show : true);
 	parts_dirty(parts);
+	parts_dump_order("show");
 }
 
 static void parts_update_global_alpha(struct parts *parts, int parent_alpha)
@@ -1131,36 +1136,64 @@ static void parts_update_component(struct parts *parts)
 // (sprite z, sprite z2), which under the multi-controller layout means
 // (controller_no, global.z). Written to settle "the second config page comes
 // up blank": it shows whether the invisible parts are actually below something
-// opaque, or simply not in the list. Dumps at most `budget` times and only
-// when the entry count changed, so loading a page produces one dump.
-static int parts_dump_frames;
-static int parts_dump_last_count = -1;
-static int parts_dump_budget = 20;
+// opaque, are in the list but turned off, or are missing from the list
+// altogether. Note that hit testing walks parts_list while drawing walks
+// sprite_list, so the two can disagree.
+//
+// Triggered from two places, both throttled to at most one dump per 10 frames
+// and capped at `parts_dump_budget` dumps:
+//   - PE_UpdateComponent, 20 frames after the entry count last changed: one
+//     dump per settled screen. A dump taken during a load is page soup.
+//   - parts_set_show, when the flag actually changes: catches a part that is
+//     in the list but was switched off, which a later settled dump would miss
+//     if the game flipped it back.
+static int parts_dump_frame;
+static int parts_dump_last = -1000;
+static int parts_dump_prev_count = -1;
+static int parts_dump_stable;
+static bool parts_dump_settled_done;
+static int parts_dump_budget = 120;
 
-static void parts_dump_order(void)
+static bool parts_dump_order(const char *why)
 {
-	parts_dump_frames++;
-	if (!config.trace_vm || parts_dump_budget <= 0 || parts_dump_frames < 20)
-		return;
+	parts_dump_frame++;
+	if (!config.trace_vm || parts_dump_budget <= 0 || parts_dump_frame - parts_dump_last < 10)
+		return false;
 	struct parts *p;
 	int n = 0;
 	PARTS_LIST_FOREACH(p)
 		n++;
-	if (n == parts_dump_last_count)
-		return;
-	parts_dump_frames = 0;
-	parts_dump_last_count = n;
+	parts_dump_last = parts_dump_frame;
 	parts_dump_budget--;
-	WARNING("PDUMP %d parts, draw order lowest first", n);
+	WARNING("PDUMP [%s] frame=%d nr=%d, draw order lowest first", why, parts_dump_frame, n);
 	int i = 0;
 	PARTS_LIST_FOREACH(p) {
-		WARNING("PDUMP %d no=%d sp=%p z=%d z2=%d gz=%d lz=%d show=%d alpha=%d pos=%d,%d st=%d ctrl=%d par=%d",
-				i++, p->no, (void *)&p->sp, p->sp.z, p->sp.z2, p->global.z, p->local.z,
+		WARNING("PDUMP [%s] %d no=%d sp=%p z=%d z2=%d gz=%d lz=%d show=%d alpha=%d pos=%d,%d st=%d ctrl=%d par=%d",
+				why, i++, p->no, (void *)&p->sp, p->sp.z, p->sp.z2, p->global.z, p->local.z,
 				p->global.show, (int)p->global.alpha,
 				p->global.pos.x, p->global.pos.y,
 				p->states[0].type, p->controller_no,
 				p->parent ? p->parent->no : -1);
 	}
+	return true;
+}
+
+static void parts_dump_when_settled(void)
+{
+	parts_dump_frame++;
+	struct parts *p;
+	int n = 0;
+	PARTS_LIST_FOREACH(p)
+		n++;
+	if (n != parts_dump_prev_count) {
+		parts_dump_prev_count = n;
+		parts_dump_stable = 0;
+		parts_dump_settled_done = false;
+		return;
+	}
+	parts_dump_stable++;
+	if (parts_dump_stable >= 20 && !parts_dump_settled_done)
+		parts_dump_settled_done = parts_dump_order("settled");
 }
 
 void PE_UpdateComponent(possibly_unused int passed_time)
@@ -1201,7 +1234,7 @@ void PE_UpdateComponent(possibly_unused int passed_time)
 		parts_update_component(parts);
 	}
 
-	parts_dump_order();
+	parts_dump_when_settled();
 }
 
 bool parts_message_window_show = true;
