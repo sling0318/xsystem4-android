@@ -806,7 +806,6 @@ static void activity_set_button_cg(int parts_no, struct string *base, bool enabl
 		free_string(name);
 		PE_SetPartsCG(parts_no, base, 0, st+1);
 	}
-	activity_note_button_cg(parts_no, base, enabled);
 }
 
 // Track which unhandled .pactex fields have been complained about already.
@@ -915,11 +914,13 @@ static int activity_walk_part(struct pe_activity *act, struct ex_tree *part, int
 	PE_SetPartsDrawFilter(no, act_int(part, ACT_N_DRAW_FILTER, 0));
 	if (config.trace_vm) {
 		char *u = text2utf(part->name->text, strlen(part->name->text));
+		// act_list_num hands back a float; %d with a float reads the next
+		// integer argument instead and every field came out garbage.
 		WARNING("pactex: part %d \"%s\" parent=%d pos=(%d,%d) z=%d show=%d origin=%d",
 				no, u, parent_no,
-				pos && pos->type == EX_LIST ? act_list_num(pos, 0, 0) : -1,
-				pos && pos->type == EX_LIST ? act_list_num(pos, 1, 0) : -1,
-				pos && pos->type == EX_LIST ? act_list_num(pos, 2, 1) : -1,
+				(int)(pos && pos->type == EX_LIST ? act_list_num(pos, 0, 0) : -1),
+				(int)(pos && pos->type == EX_LIST ? act_list_num(pos, 1, 0) : -1),
+				(int)(pos && pos->type == EX_LIST ? act_list_num(pos, 2, 1) : -1),
 				act_int(part, ACT_N_SHOW, 1), origin_mode);
 		free(u);
 	}
@@ -1032,10 +1033,14 @@ static int activity_walk_part(struct pe_activity *act, struct ex_tree *part, int
 					 */
 					bool enabled = act_int(info, ACT_N_ENABLED, 1) != 0;
 					activity_set_button_cg(no, bcg->s, enabled);
-					struct ex_value *size = act_leaf(info, ACT_N_SIZE);
-					if (size)
-						PE_SetPartsRectangleDetectionSize(no, act_list_num(size,0,0),
-								act_list_num(size,1,0), 1);
+					/*
+					 * 尺寸 is deliberately not fed to PE_SetPartsRectangleDetectionSize:
+					 * a state is a union, and switching the default state to
+					 * PARTS_RECT_DETECTION frees the CG that was just assigned, so every
+					 * button on the page loses its plate. The CG is the same rectangle
+					 * the field names (120x76 on the config tabs), so the hitbox the CG
+					 * computes for itself already covers the button.
+					 */
 					struct ex_value *text = act_leaf(info, ACT_N_TEXT);
 					if (text && text->type == EX_STRING && *(text->s->text))
 						PE_SetText(no, text->s, 1);
