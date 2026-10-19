@@ -199,6 +199,29 @@ void PE_UpdateInputState(int passed_time)
 				&hover_consumed, &click_consumed);
 	}
 
+	// TEMP DEBUG (idbg1): dump the hit-test chain on press/release transitions.
+	if (cur_clicking != prev_clicking) {
+		WARNING("IDUMP %s pos=%d,%d began=%d down=%d clicked=%d",
+				cur_clicking ? "DOWN" : "UP", cur_pos.x, cur_pos.y,
+				parts_began_click, click_down_parts, clicked_parts);
+		PARTS_LIST_FOREACH(parts) {
+			WARNING("IDUMP no=%d hit=%d click=%d pass=%d show=%d st=%d "
+					"hb=%d,%d+%d,%d gp=%d,%d lp=%d,%d oo=%d,%d",
+					parts->no,
+					parts_hittest(parts, PARTS_STATE_DEFAULT, cur_pos),
+					parts->clickable, parts->pass_cursor, parts->global.show,
+					parts->states[0].type,
+					parts->states[0].common.hitbox.x,
+					parts->states[0].common.hitbox.y,
+					parts->states[0].common.hitbox.w,
+					parts->states[0].common.hitbox.h,
+					parts->global.pos.x, parts->global.pos.y,
+					parts->local.pos.x, parts->local.pos.y,
+					parts->states[0].common.origin_offset.x,
+					parts->states[0].common.origin_offset.y);
+		}
+	}
+
 	// Drag movement processing
 	if (drag_parts && cur_clicking) {
 		bool cursor_moved = (cur_pos.x != parts_prev_pos.x ||
