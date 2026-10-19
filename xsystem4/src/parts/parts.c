@@ -1992,15 +1992,23 @@ float PE_GetPartsMagY(int parts_no)
 	return parts_get(parts_no)->local.scale.y;
 }
 
+/*
+ * Every part in an activity file carries a rotate triple, and in Rance03 all of
+ * them are zero, so warning unconditionally put 72 lines on each activity load.
+ * Only the non-zero case is worth reporting: X/Y rotation has never been
+ * verified against the Windows original.
+ */
 void PE_SetPartsRotateX(int parts_no, float rot_x)
 {
-	UNIMPLEMENTED("(%d, %f)", parts_no, rot_x);
+	if (rot_x != 0.0f)
+		UNIMPLEMENTED("(%d, %f)", parts_no, rot_x);
 	parts_set_rotation_x(parts_get(parts_no), rot_x);
 }
 
 void PE_SetPartsRotateY(int parts_no, float rot_y)
 {
-	UNIMPLEMENTED("(%d, %f)", parts_no, rot_y);
+	if (rot_y != 0.0f)
+		UNIMPLEMENTED("(%d, %f)", parts_no, rot_y);
 	parts_set_rotation_y(parts_get(parts_no), rot_y);
 }
 

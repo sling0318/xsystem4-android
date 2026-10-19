@@ -983,8 +983,29 @@ static int activity_walk_part(struct pe_activity *act, struct ex_tree *part, int
 		act_warn_once(ACT_N_SE_ON);
 	if (*act_str(part, ACT_N_SE_CLICK))
 		act_warn_once(ACT_N_SE_CLICK);
-	if (act_int(part, ACT_N_CLOSED, 0))
-		PE_SetShow(no, false);
+	/*
+	 * 閉じている is the Activity Editor's per-node tree-collapse state, not a
+	 * runtime "hide this part" switch. Mapping it to PE_SetShow(false) blanked
+	 * most of the second config page (配置／０２／メッセージページ.pactex).
+	 * Evidence:
+	 *  - "表示" is the real hide switch: exactly two parts of that activity
+	 *    carry 表示=0, and those two are the only ones the loader logs as
+	 *    show=0;
+	 *  - the whole activity has seven 閉じている=1 marks and they land on nodes
+	 *    with no runtime meaning: the 右下ボタングループ group, the
+	 *    メッセージページ group, three of that group's children, and the two
+	 *    tabs whose 遷移先 points back at this very page;
+	 *  - hiding those seven is exactly what the screen was missing -- the body
+	 *    and the two left-most tabs vanished while the tab bar's other five and
+	 *    the background drew fine, and page 1, which has no marked part at all,
+	 *    rendered completely;
+	 *  - if it really meant "do not draw", the shipped Windows game would show
+	 *    the same holes on that page, which it cannot;
+	 *  - the field sits in the editor-metadata tail of the part block, right
+	 *    next to クリック許可, which we already proved is not parts->clickable;
+	 *  - the only scripts that touch the runtime close-parts family are
+	 *    CAEInstanceItemList@Create/LoadPartsActivity, i.e. the built-in editor.
+	 */
 
 	// click-through intent data (遷移先/遷移方法 at part level)
 	struct ex_value *trans = act_leaf(part, ACT_N_TRANS_DST);
