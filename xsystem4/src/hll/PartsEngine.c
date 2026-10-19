@@ -30,6 +30,7 @@
 #include "parts.h"
 #include "hll.h"
 #include "parts_activity_names.h"
+#include "utfgbk.h"
 #include "xsystem4.h"
 
 static void PartsEngine_ModuleInit(void)
@@ -739,6 +740,15 @@ static void activity_note_cg_fallback(struct string *base, const char *tried)
 	WARNING("pactex: no CG for %s (button %s)", tried, base->text);
 }
 
+static void activity_note_button_cg(int parts_no, struct string *applied, bool enabled)
+{
+	if (!config.trace_vm)
+		return;
+	char *utf = text2utf(applied->text, strlen(applied->text));
+	WARNING("pactex: button %d en=%d cg=%s", parts_no, enabled, utf);
+	free(utf);
+}
+
 static void activity_set_button_cg(int parts_no, struct string *base, bool enabled)
 {
 	static const char *suffix[ACT_NR_STATES] = { ACT_N_SFX_0, ACT_N_SFX_1, ACT_N_SFX_2 };
@@ -747,6 +757,8 @@ static void activity_set_button_cg(int parts_no, struct string *base, bool enabl
 		string_append_cstr(&name, suffix[st], strlen(suffix[st]));
 		if (enabled && asset_exists_by_name(ASSET_CG, name->text, NULL)) {
 			PE_SetPartsCG(parts_no, name, 0, st+1);
+			if (st == 0)
+				activity_note_button_cg(parts_no, name, enabled);
 			free_string(name);
 			continue;
 		}
@@ -757,6 +769,7 @@ static void activity_set_button_cg(int parts_no, struct string *base, bool enabl
 			if (asset_exists_by_name(ASSET_CG, dis->text, NULL)) {
 				for (int st2 = 0; st2 < ACT_NR_STATES; st2++)
 					PE_SetPartsCG(parts_no, dis, 0, st2+1);
+				activity_note_button_cg(parts_no, dis, enabled);
 				free_string(dis);
 				free_string(name);
 				return;
@@ -769,6 +782,7 @@ static void activity_set_button_cg(int parts_no, struct string *base, bool enabl
 		free_string(name);
 		PE_SetPartsCG(parts_no, base, 0, st+1);
 	}
+	activity_note_button_cg(parts_no, base, enabled);
 }
 
 // Track which unhandled .pactex fields have been complained about already.
@@ -875,6 +889,16 @@ static int activity_walk_part(struct pe_activity *act, struct ex_tree *part, int
 	if (mul)
 		PE_SetMultiplyColor(no, act_list_num(mul,0,255), act_list_num(mul,1,255), act_list_num(mul,2,255));
 	PE_SetPartsDrawFilter(no, act_int(part, ACT_N_DRAW_FILTER, 0));
+	if (config.trace_vm) {
+		char *u = text2utf(part->name->text, strlen(part->name->text));
+		WARNING("pactex: part %d \"%s\" parent=%d pos=(%d,%d) z=%d show=%d origin=%d",
+				no, u, parent_no,
+				pos && pos->type == EX_LIST ? act_list_num(pos, 0, 0) : -1,
+				pos && pos->type == EX_LIST ? act_list_num(pos, 1, 0) : -1,
+				pos && pos->type == EX_LIST ? act_list_num(pos, 2, 1) : -1,
+				act_int(part, ACT_N_SHOW, 1), origin_mode);
+		free(u);
+	}
 	struct ex_value *mag = act_leaf(part, ACT_N_MAG);
 	if (mag) {
 		PE_SetPartsMagX(no, act_list_num(mag, 0, 1));
@@ -974,7 +998,15 @@ static int activity_walk_part(struct pe_activity *act, struct ex_tree *part, int
 			{
 				struct ex_value *bcg = act_leaf(info, ACT_N_CG_NAME);
 				if (bcg && bcg->type == EX_STRING && *(bcg->s->text)) {
-					bool enabled = !act_int(info, ACT_N_ENABLED, 1);
+					/*
+					 * 有効 is "this widget takes part in the interaction": in every
+					 * shipped 配置 page exactly one tab carries 0 and it is always
+					 * the tab of that page itself (page 01 -> 消息速度, 05 -> 输入,
+					 * 07 -> その他), i.e. "you are already here". Reading it as a
+					 * flag to *suppress* the graphic left the six switchable tabs
+					 * and the three bottom buttons on the ／無効 plate.
+					 */
+					bool enabled = act_int(info, ACT_N_ENABLED, 1) != 0;
 					activity_set_button_cg(no, bcg->s, enabled);
 					struct ex_value *size = act_leaf(info, ACT_N_SIZE);
 					if (size)
