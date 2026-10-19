@@ -81,6 +81,16 @@ void parts_input_reset_drag(struct parts *parts)
 static void parts_update_mouse(struct parts *parts, Point cur_pos, bool cur_clicking,
 		int passed_time, bool *hover_consumed, bool *click_consumed)
 {
+	// Layout boxes (パーツタイプ 8) are pure containers: no graphic, no mouse
+	// semantics. Since parts_set_dims started giving free boxes a real
+	// content-bbox size (575979b), the invisible 配置 page container with its
+	// 868x445 hitbox sat in front of the tab bar in the reverse list walk and
+	// -- being click_eligible through `!pass_cursor` -- swallowed every press
+	// and hover before the tabs behind it were ever checked. Containers never
+	// take part in hit testing at all.
+	if (parts->states[0].type == PARTS_LAYOUT_BOX)
+		return;
+
 	// Always use DEFAULT state hitbox regardless of the current display state.
 	bool is_hovered = parts_hittest(parts, PARTS_STATE_DEFAULT, cur_pos)
 		&& !*hover_consumed;

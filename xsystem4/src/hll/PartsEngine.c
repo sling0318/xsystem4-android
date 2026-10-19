@@ -27,6 +27,7 @@
 #include "asset_manager.h"
 #include "vm/heap.h"
 #include "vm/page.h"
+#include "gfx/font.h"
 #include "parts.h"
 #include "hll.h"
 #include "parts_activity_names.h"
@@ -808,6 +809,98 @@ static void activity_set_button_cg(int parts_no, struct string *base, bool enabl
 	}
 }
 
+/*
+ * Bake a ＣＧ名 part's label into every state's plate with the construction
+ * process. A parts state is a union: the previous PE_SetText(...) freed the
+ * DEFAULT state's graphic, which left the bottom three config buttons as
+ * bare text. The Windows original shows plate+label on every button state,
+ * and box+label side by side on checkboxes; that is what this reproduces.
+ * face stays 0 (the engine default font) -- the shipped pages carry
+ * フォントタイプ=256, which is how the game says "engine default".
+ * Falls back to the old text-only path when a state has no plate to bake on.
+ */
+static void activity_compose_label(int parts_no, int widget_type, struct string *base,
+		struct string *text, struct ex_tree *info)
+{
+	int fs = act_int(info, ACT_N_FONT_SIZE, 0);
+	if (!fs)
+		fs = 24;
+	int fr = 0, fg = 0, fb = 0;
+	struct ex_value *fc = act_leaf(info, ACT_N_FONT_COLOR);
+	if (fc) {
+		fr = act_list_num(fc, 0, 0);
+		fg = act_list_num(fc, 1, 0);
+		fb = act_list_num(fc, 2, 0);
+	}
+	float bold = 0.f;
+	struct ex_value *fw = act_leaf(info, ACT_N_FONT_BOLD);
+	if (fw && fw->type == EX_FLOAT)
+		bold = fw->f;
+	int cs = act_int(info, ACT_N_CHAR_SPACE, 0);
+
+	struct text_style ts = {0};
+	ts.size = fs;
+	ts.bold_width = bold;
+	ts.color = (SDL_Color){fr, fg, fb, 255};
+	ts.scale_x = 1.0f;
+	ts.space_scale_x = 1.0f;
+	ts.font_spacing = cs;
+	int tw = (int)ceilf(gfx_size_text(&ts, text->text));
+	int th = (int)text_style_height(&ts);
+
+	for (int st = 1; st <= ACT_NR_STATES; st++) {
+		struct string *cg_name = NULL;
+		PE_GetPartsCGName(parts_no, &cg_name, st);
+		if (!cg_name || !*cg_name->text) {
+			free_string(cg_name);
+			continue;
+		}
+		int cw = PE_GetPartsWidth(parts_no, st);
+		int chh = PE_GetPartsHeight(parts_no, st);
+		int w2 = cw, h2 = chh, tx, ty;
+		if (widget_type == 1) {
+			// checkbox: box at (0,0), label to its right (Windows original)
+			w2 = cw + 4 + tw;
+			h2 = chh > th ? chh : th;
+			tx = cw + 4;
+			ty = chh > th ? (chh - th) / 2 : 0;
+		} else {
+			tx = (cw - tw) / 2;
+			ty = (chh - th) / 2;
+			if (tx < 0)
+				tx = 0;
+			if (ty < 0)
+				ty = 0;
+		}
+		PE_ClearPartsConstructionProcess(parts_no, st);
+		bool ok = PE_AddCreateCGToProcess(parts_no, cg_name, st);
+		if (ok && (w2 != cw || h2 != chh))
+			ok = PE_AddResizeCanvasToPartsConstructionProcess(parts_no, w2, h2, st);
+		if (ok)
+			ok = PE_AddDrawTextToPartsConstructionProcess(parts_no, tx, ty, text,
+					0, fs, fr, fg, fb, bold, 0, 0, 0, 0.f, cs, 0, st);
+		if (ok)
+			ok = PE_BuildPartsConstructionProcess(parts_no, st);
+		if (!ok && st == 1) {
+			// nothing to bake on: keep the bare text so the label survives
+			PE_SetText(parts_no, text, 1);
+			if (fs)
+				PE_SetPartsFontSize(parts_no, fs, 1);
+			PE_SetPartsFontColor(parts_no, fr, fg, fb, 1);
+		}
+		free_string(cg_name);
+	}
+
+	// checkbox: pick up the checked box (ＣＧ名＋"／チェック／通常") so
+	// parts_render can show the red check mark while the part is checked
+	if (widget_type == 1) {
+		struct string *chk = string_dup(base);
+		string_append_cstr(&chk, ACT_N_SFX_CHECK_ON, strlen(ACT_N_SFX_CHECK_ON));
+		PE_parts_set_checked_cg(parts_no, chk);
+		free_string(chk);
+	}
+}
+
 // Track which unhandled .pactex fields have been complained about already.
 static void act_warn_once(const char *field)
 {
@@ -1082,23 +1175,8 @@ static int activity_walk_part(struct pe_activity *act, struct ex_tree *part, int
 					 * computes for itself already covers the button.
 					 */
 					struct ex_value *text = act_leaf(info, ACT_N_TEXT);
-					if (text && text->type == EX_STRING && *(text->s->text)) {
-						PE_SetText(no, text->s, 1);
-						int fs = act_int(info, ACT_N_FONT_SIZE, 0);
-						if (fs)
-							PE_SetPartsFontSize(no, fs, 1);
-						struct ex_value *fc = act_leaf(info, ACT_N_FONT_COLOR);
-						if (fc)
-							PE_SetPartsFontColor(no, act_list_num(fc,0,0), act_list_num(fc,1,0),
-									act_list_num(fc,2,0), 1);
-						struct ex_value *ec = act_leaf(info, ACT_N_FONT_EDGE_COLOR);
-						if (ec)
-							PE_SetPartsFontEdgeColor(no, act_list_num(ec,0,0), act_list_num(ec,1,0),
-									act_list_num(ec,2,0), 1);
-						int cs = act_int(info, ACT_N_CHAR_SPACE, 0);
-						if (cs)
-							PE_SetTextCharSpace(no, cs, 1);
-					}
+					if (text && text->type == EX_STRING && *(text->s->text))
+						activity_compose_label(no, type, bcg->s, text->s, info);
 				}
 			}
 			break;

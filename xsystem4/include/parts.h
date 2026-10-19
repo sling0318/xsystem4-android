@@ -139,6 +139,10 @@ void PE_parts_set_want_back_scene(int parts_no, bool want_back_scene);
 bool PE_parts_want_back_scene(int parts_no);
 void PE_parts_set_checked(int parts_no, bool checked);
 bool PE_parts_checked(int parts_no);
+// Load ＣＧ名＋"／チェック／通常" (the checked-state box) for a type-1 part;
+// drawn by parts_render while PE_parts_checked is true. No-op if the
+// archive has no such entry.
+bool PE_parts_set_checked_cg(int parts_no, struct string *cg_name);
 void PE_parts_set_checkbox_color(int parts_no, int r, int g, int b);
 // channel: 0=R 1=G 2=B; returns 255 for an unknown part or channel
 int PE_parts_checkbox_color(int parts_no, int channel);
@@ -207,6 +211,8 @@ bool PE_AddDrawTextToPartsConstructionProcess(int parts_no, int x, int y, struct
 		int type, int size, int r, int g, int b, float bold_weight,
 		int edge_r, int edge_g, int edge_b, float edge_weight,
 		int char_space, int line_space, int state);
+// Grow the canvas to (w, h), keeping existing content at (0, 0)
+bool PE_AddResizeCanvasToPartsConstructionProcess(int parts_no, int w, int h, int state);
 bool PE_BuildPartsConstructionProcess(int parts_no, int state);
 bool PE_ClearPartsConstructionProcess(int parts_no, int state);
 bool PE_SetPartsConstructionSurfaceArea(int parts_no, int x, int y, int w, int h, int state);

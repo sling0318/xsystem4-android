@@ -40,6 +40,7 @@ void parts_cp_op_free(struct parts_cp_op *op)
 	case PARTS_CP_FILL_WITH_ALPHA:
 	case PARTS_CP_DRAW_RECT:
 	case PARTS_CP_GRAY_FILTER:
+	case PARTS_CP_RESIZE_CANVAS:
 		break;
 	case PARTS_CP_CG:
 		free_string(op->cg.name);
@@ -105,6 +106,22 @@ bool PE_AddCreateCGToProcess(int parts_no, struct string *cg_name, int state)
 	struct parts_cp_op *op = xcalloc(1, sizeof(struct parts_cp_op));
 	op->type = PARTS_CP_CG;
 	op->cg.name = string_ref(cg_name);
+	parts_add_cp_op(cproc, op);
+	return true;
+}
+
+// Grow the canvas to (w, h), keeping the current content at (0, 0). Used by
+// the activity loader to make room for a checkbox label next to the box.
+bool PE_AddResizeCanvasToPartsConstructionProcess(int parts_no, int w, int h, int state)
+{
+	if (!parts_state_valid(--state))
+		return false;
+
+	struct parts_construction_process *cproc = get_cproc(parts_no, state);
+	struct parts_cp_op *op = xcalloc(1, sizeof(struct parts_cp_op));
+	op->type = PARTS_CP_RESIZE_CANVAS;
+	op->create.w = w;
+	op->create.h = h;
 	parts_add_cp_op(cproc, op);
 	return true;
 }
@@ -354,6 +371,21 @@ static bool build_create_pixel_only(struct parts *parts, struct parts_constructi
 	return true;
 }
 
+static bool build_resize_canvas(struct parts *parts, struct parts_construction_process *cproc,
+		struct parts_cp_create *op)
+{
+	if (!cproc->common.texture.handle)
+		return false;
+	if (op->w <= cproc->common.w && op->h <= cproc->common.h)
+		return true;
+	Texture old = cproc->common.texture;
+	gfx_init_texture_rgba(&cproc->common.texture, op->w, op->h, (SDL_Color){0,0,0,0});
+	gfx_draw_glyph(&cproc->common.texture, 0, 0, &old, (SDL_Color){255,255,255,255}, 1.0f, 0, true);
+	gfx_delete_texture(&old);
+	parts_set_dims(parts, &cproc->common, op->w, op->h);
+	return true;
+}
+
 static bool build_cg(struct parts *parts, struct parts_construction_process *cproc, struct parts_cp_cg *op)
 {
 	struct cg *cg = asset_cg_load_by_name(op->name->text, NULL);
@@ -538,6 +570,10 @@ bool parts_build_construction_process(struct parts *parts,
 			break;
 		case PARTS_CP_GRAY_FILTER:
 			if (!build_gray_filter(cproc, &op->filter))
+				return false;
+			break;
+		case PARTS_CP_RESIZE_CANVAS:
+			if (!build_resize_canvas(parts, cproc, &op->create))
 				return false;
 			break;
 		}

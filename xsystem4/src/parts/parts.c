@@ -1032,6 +1032,7 @@ void parts_release(int parts_no)
 	for (int i = 0; i < PARTS_NR_STATES; i++) {
 		parts_state_free(&parts->states[i]);
 	}
+	gfx_delete_texture(&parts->checked_cg.texture);
 
 	// break parent/child relationships
 	while (!TAILQ_EMPTY(&parts->children)) {
@@ -2357,6 +2358,24 @@ bool PE_parts_checked(int parts_no)
 {
 	struct parts *parts = parts_try_get(parts_no);
 	return parts ? parts->checked : false;
+}
+
+bool PE_parts_set_checked_cg(int parts_no, struct string *cg_name)
+{
+	struct parts *parts = parts_try_get(parts_no);
+	if (!parts)
+		return false;
+	if (!asset_exists_by_name(ASSET_CG, cg_name->text, NULL))
+		return false;
+	struct cg *cg = asset_cg_load_by_name(cg_name->text, NULL);
+	if (!cg)
+		return false;
+	gfx_delete_texture(&parts->checked_cg.texture);
+	gfx_init_texture_with_cg(&parts->checked_cg.texture, cg);
+	parts->checked_cg.w = cg->metrics.w;
+	parts->checked_cg.h = cg->metrics.h;
+	cg_free(cg);
+	return true;
 }
 
 void PE_parts_set_checkbox_color(int parts_no, int r, int g, int b)

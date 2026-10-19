@@ -194,7 +194,8 @@ enum parts_cp_op_type {
 	PARTS_CP_COPY_TEXT,
 	PARTS_CP_GRAY_FILTER,
 	PARTS_CP_FILL_WITH_ALPHA,
-#define PARTS_NR_CP_TYPES (PARTS_CP_FILL_WITH_ALPHA+1)
+	PARTS_CP_RESIZE_CANVAS,
+#define PARTS_NR_CP_TYPES (PARTS_CP_RESIZE_CANVAS+1)
 };
 
 struct parts_cp_create {
@@ -426,6 +427,10 @@ struct parts {
 	// back; it is deliberately not part of the parts save stream.
 	bool checked;
 	int checkbox_color[3];
+	// The checked-state box graphic (ＣＧ名＋"／チェック／通常"), loaded by the
+	// activity loader for type-1 parts; drawn instead of the state CG while
+	// checked. Windows original shows a red check mark there.
+	struct parts_common checked_cg;
 	struct parts_scroll scroll;
 	bool draggable;
 	int on_cursor_sound;

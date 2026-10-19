@@ -165,6 +165,14 @@ bool PE_SetText(int parts_no, struct string *text, int state)
 		return false;
 
 	struct parts *parts = parts_get(parts_no);
+	// TEMP DEBUG (ghost1): the CJK labels on the title menu draw doubled;
+	// log every SetText so the caller chain behind the two copies shows up.
+	if (config.trace_vm) {
+		char *u = text2utf(text->text, strlen(text->text));
+		WARNING("SETTEXT no=%d st=%d len=%d \"%s\"", parts_no, state + 1,
+				(int)strlen(text->text), u);
+		free(u);
+	}
 	parts_text_clear(parts, state);
 	parts_text_append(parts, parts_get_text(parts, state), text);
 	return true;

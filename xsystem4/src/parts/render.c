@@ -113,6 +113,12 @@ static void parts_render_texture(struct texture *texture, mat4 mw_transform, Rec
 
 static void parts_render_text(struct parts *parts, struct parts_text *t)
 {
+	// TEMP DEBUG (ghost1): parts_update_mouse ignores global.show, and an
+	// alpha=0 text part drawing here would put a second copy of a button
+	// label on screen; log it so the double-draw source is unmistakable.
+	if (parts->global.alpha == 0)
+		WARNING("TEXTDRAW no=%d alpha=0 pos=%d,%d", parts->no,
+				parts->global.pos.x, parts->global.pos.y);
 	vec3 add_color = {
 		parts->global.add_color.r / 255.0f,
 		parts->global.add_color.g / 255.0f,
@@ -616,7 +622,11 @@ void parts_render(struct parts *parts)
 	case PARTS_VGAUGE:
 	case PARTS_CONSTRUCTION_PROCESS:
 	case PARTS_MOVIE:
-		if (state->common.texture.handle)
+		// A checked checkbox swaps its box for the ／チェック variant the
+		// loader picked (red check mark in the Windows original).
+		if (parts->checked && parts->checked_cg.texture.handle)
+			parts_render_cg(parts, &parts->checked_cg);
+		else if (state->common.texture.handle)
 			parts_render_cg(parts, &state->common);
 		break;
 	case PARTS_TEXT:
