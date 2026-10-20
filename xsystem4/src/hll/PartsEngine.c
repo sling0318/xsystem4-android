@@ -1452,6 +1452,25 @@ static int PartsEngine_GetActivityPartsNumber(struct string *name, struct string
 {
 	struct pe_activity *act = activity_find(name->text);
 	struct activity_part *part = act ? activity_part_by_name(act, parts_name->text) : NULL;
+	if (!part && config.trace_vm) {
+		// Once per name: the config view polls a couple of dozen help-text and
+		// checkbox names every frame.
+		static char *seen[128];
+		static int nr_seen;
+		bool known = false;
+		for (int i = 0; i < nr_seen; i++) {
+			if (!strcmp(seen[i], parts_name->text)) {
+				known = true;
+				break;
+			}
+		}
+		if (!known) {
+			if (nr_seen < 128)
+				seen[nr_seen++] = strdup(parts_name->text);
+			WARNING("INTENT partsNumber act=%s part=%s -> not found",
+					display_utf0(name->text), display_utf0(parts_name->text));
+		}
+	}
 	/*
 	 * Not found reads as 0, not -1: CConfigView@SetTextForParts (func 1663,
 	 * 0x358a0) and CConfigView@SetCheckStatForParts (func 1662, 0x357b2) both
