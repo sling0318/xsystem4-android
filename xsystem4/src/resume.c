@@ -858,12 +858,14 @@ void vm_load_image(const char *key, const char *path)
 	enum savefile_error error = load_rsave_image(key, path);
 	switch (error) {
 	case SAVEFILE_SUCCESS:
+		vm_cancel_native_ui_cleanup();
 		scene_blackout_end();
 		scene_set_wallpaper_visible(true);
 		return;
 	case SAVEFILE_INVALID_SIGNATURE:
 		// If not a System4 resume save file, read as a json.
 		load_json_image(key, path);
+		vm_cancel_native_ui_cleanup();
 		scene_blackout_end();
 		scene_set_wallpaper_visible(true);
 		return;

@@ -119,6 +119,7 @@ enum vm_game_action {
 int vm_execute_ain(struct ain *program);
 void vm_call(int fno, int struct_page);
 void vm_queue_game_action(enum vm_game_action action);
+void vm_cancel_native_ui_cleanup(void);
 int vm_time(void);
 void vm_sleep(int ms);
 

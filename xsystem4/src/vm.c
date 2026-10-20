@@ -2420,22 +2420,17 @@ static int game_action_function(enum vm_game_action action)
 	return fno;
 }
 
-// Call a helper function with no args. Returns the function number or -1.
-static int call_helper(const char *name_utf8)
+// State for the code that runs after the native save/load scene returns.
+// function_call() only pushes a frame, so the post-processing cannot simply
+// follow it in C; remember the return address and run it at the next
+// instruction boundary that lands back in the caller.
+static bool native_ui_cleanup_pending;
+static size_t native_ui_cleanup_ip;
+static int32_t native_ui_cleanup_depth;
+
+void vm_cancel_native_ui_cleanup(void)
 {
-	char *sjis = utf2sjis(name_utf8, 0);
-	int fno = ain_get_function(ain, sjis);
-	free(sjis);
-	if (fno < 0 || fno >= ain->nr_functions) {
-		WARNING("Helper function not found: %s", name_utf8);
-		return -1;
-	}
-	if (ain->functions[fno].nr_args != 0) {
-		WARNING("Helper function takes arguments: %s", name_utf8);
-		return -1;
-	}
-	function_call(fno, instr_ptr);
-	return fno;
+	native_ui_cleanup_pending = false;
 }
 
 static void vm_execute_loop(void)
@@ -2448,33 +2443,42 @@ static void vm_execute_loop(void)
 		// (e.g. the Android overlay) and dispatch them at an instruction
 		// boundary of the outermost execution, like a script-level interrupt.
 		if (execute_depth == 1) {
+			// OpenSave/OpenLoad was scheduled below; once its call frame has
+			// returned we are back at the instruction that followed the
+			// injection point. Restore the game scene here, before that
+			// instruction runs.
+			if (native_ui_cleanup_pending &&
+			    call_stack_ptr == native_ui_cleanup_depth &&
+			    instr_ptr == native_ui_cleanup_ip) {
+				native_ui_cleanup_pending = false;
+				scene_set_wallpaper_visible(true);
+				scene_blackout_end();
+				continue;
+			}
 			int action = SDL_AtomicGet(&pending_game_action);
 			if (action != VM_GAME_ACTION_NONE) {
 				SDL_AtomicSet(&pending_game_action, VM_GAME_ACTION_NONE);
+				// Ignore further actions while the native save/load scene is
+				// open; injecting a load there would corrupt the scene.
+				if (native_ui_cleanup_pending)
+					continue;
 				int fno = game_action_function(action);
 				if (fno >= 0) {
-					// The game's save lion hides the game objects before opening
-					// the save/load scene, so the UI doesn't render on top of
-					// battle/map parts. Do the same around the queued action.
-					// The parts blackout is render-only: it skips drawing parts
-					// that existed before the scene, including the battle field
-					// and wallpaper, without changing their save-file state.
+					// Cover the game scene while the native save/load scene is
+					// open. This is render-only: the black sprite sits below the
+					// save UI parts (z=1000) and the pre-existing sprites are
+					// skipped, so no game state is modified and no fade is
+					// needed.
 					bool native_ui = action == VM_GAME_ACTION_OPEN_SAVE ||
 							 action == VM_GAME_ACTION_OPEN_LOAD;
 					if (native_ui) {
-						call_helper("hideGameObject");
 						scene_blackout_begin();
 						scene_set_wallpaper_visible(false);
+						native_ui_cleanup_pending = true;
+						native_ui_cleanup_depth = call_stack_ptr;
+						native_ui_cleanup_ip = instr_ptr;
 					}
 					function_call(fno, instr_ptr);
-					// A successful load replaces the VM state and clears the
-					// blackout in vm_load_image(), so this only runs when the
-					// scene is closed/cancelled. That matches the game.
-					if (native_ui) {
-						scene_set_wallpaper_visible(true);
-						scene_blackout_end();
-						call_helper("restoreGameObject");
-					}
 				}
 				continue;
 			}
