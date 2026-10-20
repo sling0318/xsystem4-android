@@ -1298,9 +1298,10 @@ static void parts_render_dump(const char *why)
 	int i = 0, dumped = 0;
 	PARTS_LIST_FOREACH(p) {
 		struct parts_common *common = &p->states[0].common;
-		WARNING("RDUMP [%s] %d no=%d ctrl=%d z=%d z2=%d show=%d alpha=%d pos=%d,%d w=%d h=%d ox=%d oy=%d st=%d tex=%d chk=%d link=%d lfrom=%d hov=%d par=%d",
+		WARNING("RDUMP [%s] %d no=%d ctrl=%d z=%d z2=%d show=%d alpha=%d mul=%d,%d,%d pos=%d,%d w=%d h=%d ox=%d oy=%d st=%d tex=%d chk=%d link=%d lfrom=%d hov=%d par=%d",
 				why, i++, p->no, p->controller_no, p->sp.z, p->sp.z2,
 				p->global.show, (int)p->global.alpha,
+				p->global.multiply_color.r, p->global.multiply_color.g, p->global.multiply_color.b,
 				p->global.pos.x, p->global.pos.y,
 				common->w, common->h, common->origin_offset.x, common->origin_offset.y,
 				p->states[0].type, (int)common->texture.handle,

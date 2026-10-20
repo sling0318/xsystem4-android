@@ -901,6 +901,33 @@ static void activity_compose_label(int parts_no, int widget_type, struct string 
 	}
 }
 
+/*
+ * The config page's colour swatches are type-1 buttons with no ＣＧ名 at all:
+ * the editor leaves only a 尺寸 and ボタンの色. The game tints them at runtime
+ * with 乗算色, but a part with no texture has nothing to tint, so the swatch
+ * stayed at st=0 and the page showed empty white frames. Give such a button a
+ * flat base canvas; the cap CG on top draws the frame and the selected mark.
+ */
+static void activity_compose_flat_color(int parts_no, struct ex_tree *info)
+{
+	struct ex_value *size = act_leaf(info, ACT_N_SIZE);
+	struct ex_value *color = act_leaf(info, ACT_N_BUTTON_COLOR);
+	if (!size || size->type != EX_LIST || !color || color->type != EX_LIST)
+		return;
+	int w = act_list_num(size, 0, 0);
+	int h = act_list_num(size, 1, 0);
+	if (w <= 0 || h <= 0)
+		return;
+	int r = act_list_num(color, 0, 200);
+	int g = act_list_num(color, 1, 200);
+	int b = act_list_num(color, 2, 200);
+	PE_ClearPartsConstructionProcess(parts_no, 1);
+	if (!PE_AddCreatePixelOnlyToPartsConstructionProcess(parts_no, w, h, 1))
+		return;
+	PE_AddFillToPartsConstructionProcess(parts_no, 0, 0, w, h, r, g, b, 1);
+	PE_BuildPartsConstructionProcess(parts_no, 1);
+}
+
 // Track which unhandled .pactex fields have been complained about already.
 static void act_warn_once(const char *field)
 {
@@ -1177,6 +1204,9 @@ static int activity_walk_part(struct pe_activity *act, struct ex_tree *part, int
 					struct ex_value *text = act_leaf(info, ACT_N_TEXT);
 					if (text && text->type == EX_STRING && *(text->s->text))
 						activity_compose_label(no, type, bcg->s, text->s, info);
+				} else if (type == 1) {
+					/* colour swatch: no image, only a size and a flat colour */
+					activity_compose_flat_color(no, info);
 				}
 			}
 			break;
