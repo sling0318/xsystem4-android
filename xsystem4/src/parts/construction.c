@@ -496,10 +496,24 @@ static bool build_copy_cut_cg(struct parts_construction_process *cproc, struct p
 	return true;
 }
 
-static bool build_draw_text(struct parts_construction_process *cproc, struct parts_cp_text *op)
+static bool build_draw_text(struct parts *parts, struct parts_construction_process *cproc,
+		struct parts_cp_text *op)
 {
 	if (!cproc->common.texture.handle)
 		return false;
+	// Same FNL-to-TTF spacing adjustment as build_copy_text: a negative
+	// 文字間隔 became a positive gap, so the label needs a little more room.
+	int nr = text_count_char(op->text->text);
+	int need_w = op->x + (int)ceilf(gfx_size_text(&op->style, op->text->text))
+			+ (nr > 0 ? (nr - 1) * (int)op->style.font_spacing : 0) + 4;
+	int need_h = op->y + (int)ceilf(op->style.size + op->style.edge_up + op->style.edge_down) + 2;
+	if (need_w > cproc->common.texture.w || need_h > cproc->common.texture.h) {
+		struct parts_cp_create grow = {
+			.w = need_w > cproc->common.texture.w ? need_w : cproc->common.texture.w,
+			.h = need_h > cproc->common.texture.h ? need_h : cproc->common.texture.h,
+		};
+		build_resize_canvas(parts, cproc, &grow);
+	}
 	gfx_render_text(&cproc->common.texture, op->x, op->y, op->text->text, &op->style, true);
 	return true;
 }
@@ -624,7 +638,7 @@ bool parts_build_construction_process(struct parts *parts,
 				return false;
 			break;
 		case PARTS_CP_DRAW_TEXT:
-			if (!build_draw_text(cproc, &op->text))
+			if (!build_draw_text(parts, cproc, &op->text))
 				return false;
 			break;
 		case PARTS_CP_COPY_TEXT:
