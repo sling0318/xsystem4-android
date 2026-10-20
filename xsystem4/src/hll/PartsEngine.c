@@ -1418,7 +1418,15 @@ static int PartsEngine_GetActivityPartsNumber(struct string *name, struct string
 {
 	struct pe_activity *act = activity_find(name->text);
 	struct activity_part *part = act ? activity_part_by_name(act, parts_name->text) : NULL;
-	return part ? part->parts_no : -1;
+	/*
+	 * Not found reads as 0, not -1: CConfigView@SetTextForParts (func 1663,
+	 * 0x358a0) and CConfigView@SetCheckStatForParts (func 1662, 0x357b2) both
+	 * skip a lookup result only when it compares equal to 0. Returning -1
+	 * funneled every per-frame help-text/checkbox update into
+	 * Parts_SetText(-1, ...), which materialized a phantom parts object that
+	 * re-rendered (alpha=0, pos 0,0) ~34k times per session.
+	 */
+	return part ? part->parts_no : 0;
 }
 
 static void PartsEngine_GetActivityPartsName(struct string **out, struct string *name, int number)

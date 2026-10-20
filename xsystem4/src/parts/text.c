@@ -164,6 +164,18 @@ bool PE_SetText(int parts_no, struct string *text, int state)
 	if (!parts_state_valid(--state))
 		return false;
 
+	// 0 and -1 are lookup failures, not part numbers (real parts number
+	// 1000001000+); parts_get() would materialize a phantom that renders.
+	if (parts_no <= 0) {
+		static bool complained = false;
+		if (!complained) {
+			complained = true;
+			WARNING("SetText on invalid part %d: \"%s\"", parts_no,
+					display_sjis0(text->text));
+		}
+		return false;
+	}
+
 	struct parts *parts = parts_get(parts_no);
 	// TEMP DEBUG (ghost1): the CJK labels on the title menu draw doubled;
 	// log every SetText so the caller chain behind the two copies shows up.
