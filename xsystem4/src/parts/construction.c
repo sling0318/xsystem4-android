@@ -381,7 +381,11 @@ static bool build_resize_canvas(struct parts *parts, struct parts_construction_p
 		return true;
 	Texture old = cproc->common.texture;
 	gfx_init_texture_rgba(&cproc->common.texture, op->w, op->h, (SDL_Color){0,0,0,0});
-	gfx_draw_glyph(&cproc->common.texture, 0, 0, &old, (SDL_Color){255,255,255,255}, 1.0f, 0, true);
+	// A plain RGBA copy: gfx_draw_glyph samples the source as an alpha map and
+	// paints it in the color passed here, which turned every checkbox box and
+	// color-swatch fill white/transparent once the canvas had to grow.
+	gfx_copy_stretch_with_alpha_map(&cproc->common.texture, 0, 0, old.w, old.h,
+			&old, 0, 0, old.w, old.h);
 	gfx_delete_texture(&old);
 	parts_set_dims(parts, &cproc->common, op->w, op->h);
 	return true;

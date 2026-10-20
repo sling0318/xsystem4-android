@@ -1232,6 +1232,39 @@ static int activity_walk_part(struct pe_activity *act, struct ex_tree *part, int
 	return no;
 }
 
+/*
+ * オンカーソル表示連動 / アルファクリッパー refer to parts by name, and the
+ * tree is walked in file order: the six 説明文 labels on 配置／０６ come before
+ * the controls they point at, so the single-pass lookup silently dropped every
+ * link and all six help texts drew on top of each other. Resolve them again
+ * once the whole activity has been registered.
+ */
+static void activity_resolve_forward_links(struct pe_activity *act, struct ex_tree *part)
+{
+	if (!part || part->is_leaf)
+		return;
+	struct activity_part *self = activity_part_by_name(act, part->name->text);
+	if (self) {
+		struct ex_value *clip = act_leaf(part, ACT_N_ALPHA_CLIP);
+		if (clip && clip->type == EX_STRING && *(clip->s->text)) {
+			struct activity_part *target = activity_part_by_name(act, clip->s->text);
+			if (target)
+				PE_SetPartsAlphaClipperPartsNumber(self->parts_no, target->parts_no);
+		}
+		struct ex_value *link = act_leaf(part, ACT_N_ONCURSOR_LINK);
+		if (link && link->type == EX_STRING && *(link->s->text)) {
+			struct activity_part *target = activity_part_by_name(act, link->s->text);
+			if (target)
+				PE_SetOnCursorShowLinkPartsNumber(self->parts_no, target->parts_no);
+			else if (config.trace_vm)
+				WARNING("pactex: ONCURSOR_LINK target not found: %s (from %s)",
+						display_utf0(link->s->text), display_utf0(part->name->text));
+		}
+	}
+	for (uint32_t i = 0; i < part->nr_children; i++)
+		activity_resolve_forward_links(act, &part->children[i]);
+}
+
 static bool activity_load_pact(struct pe_activity *act, struct archive_data *data)
 {
 	struct ex *ex = ex_read(data->data, data->size);
@@ -1253,6 +1286,7 @@ static bool activity_load_pact(struct pe_activity *act, struct archive_data *dat
 	}
 	int root_no = activity_walk_part(act, root_parts, -1);
 	(void)root_no;
+	activity_resolve_forward_links(act, root_parts);
 	struct ex_list *keys = ex_get_list(ex, ACT_N_END_KEYS);
 	if (keys) {
 		for (uint32_t i = 0; i < keys->nr_items; i++) {
