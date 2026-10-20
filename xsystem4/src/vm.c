@@ -2388,10 +2388,10 @@ static int game_action_function(enum vm_game_action action)
 	const char *name;
 	switch (action) {
 	case VM_GAME_ACTION_QUICK_SAVE:
-		name = "ＳＫ簡易セーブ";
+		name = "Ｓ＿簡易セーブ";
 		break;
 	case VM_GAME_ACTION_QUICK_LOAD:
-		name = "ＳＫ簡易ロード";
+		name = "Ｓ＿簡易ロード";
 		break;
 	default:
 		return -1;
