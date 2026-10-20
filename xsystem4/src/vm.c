@@ -2658,3 +2658,4 @@ _Noreturn void vm_exit(int code)
 #endif
 	sys_exit(code);
 }
+// overlay fix trigger
