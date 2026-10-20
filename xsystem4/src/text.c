@@ -276,6 +276,23 @@ enum font_weight gfx_int_to_font_weight(int weight)
 
 float gfx_render_textf(Texture *dst, float x, int y, char *msg, struct text_style *ts, bool blend)
 {
+	// TEMP DEBUG (ghost4): the title menu's first button shows two text draws
+	// half a char apart; CPBUILD proved one text op per canvas and the DCF/CG
+	// carry no baked labels, so log every render call to catch the second one.
+	if (config.trace_vm) {
+		char head[32];
+		int n = 0;
+		while (msg[n] && n < 12) {
+			if ((unsigned char)msg[n] < 0x80 && !msg[n]) break;
+			n += text_2byte(msg[n]) ? 2 : 1;
+		}
+		if (n > 12) n = 12;
+		memcpy(head, msg, n);
+		head[n] = 0;
+		WARNING("RTXT dst=%u x=%.1f y=%d blend=%d size=%d edge=%.2f bold=%.2f \"%s\"",
+				dst ? dst->handle : 0, x, y, (int)blend, ts->size,
+				text_style_edge_width(ts), ts->bold_width, head);
+	}
 	enum font_weight weight = gfx_int_to_font_weight(ts->weight);
 	struct font_size *font_size = text_style_font_size(ts);
 	float edge_width = text_style_edge_width(ts);
