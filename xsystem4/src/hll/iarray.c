@@ -256,7 +256,11 @@ struct string *iarray_read_string(struct iarray_reader *r)
 	int c;
 	struct string *s = make_string("", 0);
 	while ((c = iarray_read(r))) {
-		string_push_back(&s, c);
+		// The writer packs each character as a byte pair. Unpack it with the
+		// same charset-aware rule, otherwise GBK pairs lose their trail byte.
+		char bytes[2] = { c & 0xff, (c >> 8) & 0xff };
+		int len = (text_2byte(bytes[0]) && bytes[1]) ? 2 : 1;
+		string_append_cstr(&s, bytes, len);
 	}
 	return s;
 }
