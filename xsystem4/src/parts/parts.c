@@ -15,9 +15,12 @@
  */
 
 #include <assert.h>
+#include <limits.h>
+#include <stdio.h>
 
 #include "system4.h"
 #include "system4/cg.h"
+#include "system4/file.h"
 #include "system4/hashtable.h"
 #include "system4/string.h"
 
@@ -30,6 +33,10 @@
 #include "parts.h"
 #include "parts_internal.h"
 #include "reign.h"
+
+#ifndef PATH_MAX
+#define PATH_MAX 4096
+#endif
 
 struct parts_list parts_list = TAILQ_HEAD_INITIALIZER(parts_list);
 static struct parts_list dirty_list = TAILQ_HEAD_INITIALIZER(dirty_list);
@@ -1164,6 +1171,43 @@ static void parts_update_component(struct parts *parts)
 	}
 }
 
+// Texture dumps for screenshot-free verification. The emulator stops
+// presenting while the host desktop is locked, but the VM and these dumps keep
+// running, so a failed visual check does not have to wait for a human to
+// unlock the machine.
+static int parts_tex_dump_seq;
+
+static const char *parts_dump_dir(void)
+{
+	static char *dir;
+	if (!dir) {
+		dir = path_join(config.game_dir, "dump");
+		if (mkdir_p(dir)) {
+			free(dir);
+			dir = NULL;
+		}
+	}
+	return dir;
+}
+
+bool parts_dump_texture(Texture *t, const char *tag, int no, int state)
+{
+	if (!config.trace_vm || !t || !t->handle || t->w <= 0 || t->h <= 0)
+		return false;
+	if (parts_tex_dump_seq >= 400)
+		return false;
+	const char *dir = parts_dump_dir();
+	if (!dir)
+		return false;
+	char path[PATH_MAX];
+	snprintf(path, sizeof(path), "%s/%s_%03d_no%d_st%d_%dx%d.png",
+			dir, tag, ++parts_tex_dump_seq, no, state, t->w, t->h);
+	gfx_save_texture(t, path, ALCG_PNG);
+	WARNING("TEXDUMP %s no=%d st=%d w=%d h=%d file=%s", tag, no, state,
+			t->w, t->h, path);
+	return true;
+}
+
 // Diagnostic: dump the parts list in draw order. The list is sorted by
 // (sprite z, sprite z2), which under the multi-controller layout means
 // (controller_no, global.z). Written to settle "the second config page comes
@@ -1200,13 +1244,16 @@ static bool parts_dump_order(const char *why)
 	WARNING("PDUMP [%s] frame=%d nr=%d, draw order lowest first", why, parts_dump_frame, n);
 	int i = 0;
 	PARTS_LIST_FOREACH(p) {
-		WARNING("PDUMP [%s] %d no=%d sp=%p z=%d z2=%d gz=%d lz=%d show=%d alpha=%d pos=%d,%d st=%d tex=%d chk=%d ctrl=%d par=%d",
+		WARNING("PDUMP [%s] %d no=%d sp=%p z=%d z2=%d gz=%d lz=%d show=%d alpha=%d pos=%d,%d w=%d h=%d ox=%d oy=%d st=%d tex=%d chk=%d ctrl=%d link=%d lfrom=%d hov=%d par=%d",
 				why, i++, p->no, (void *)&p->sp, p->sp.z, p->sp.z2, p->global.z, p->local.z,
 				p->global.show, (int)p->global.alpha,
 				p->global.pos.x, p->global.pos.y,
+				p->states[0].common.w, p->states[0].common.h,
+				p->states[0].common.origin_offset.x, p->states[0].common.origin_offset.y,
 				p->states[0].type,
 				(int)p->states[0].common.texture.handle,
 				(int)p->checked, p->controller_no,
+				p->linked_to, p->linked_from, p->is_hovered,
 				p->parent ? p->parent->no : -1);
 	}
 	return true;
@@ -1228,6 +1275,63 @@ static void parts_dump_when_settled(void)
 	parts_dump_stable++;
 	if (parts_dump_stable >= 20 && !parts_dump_settled_done)
 		parts_dump_settled_done = parts_dump_order("settled");
+}
+
+static void dump_hex(char *dst, int dst_size, const char *src, int max_bytes)
+{
+	int n = 0;
+	for (int i = 0; i < max_bytes && src[i] && n < dst_size - 3; i++)
+		n += snprintf(dst + n, dst_size - n, "%02X", (unsigned char)src[i]);
+	dst[n] = '\0';
+}
+
+// On-demand dump, triggered by touching <game_dir>/.render-dump. Unlike the
+// settled PDUMP it carries text contents, link/hover state and the actual
+// textures, so a screen can be audited from adb alone.
+static void parts_render_dump(const char *why)
+{
+	struct parts *p;
+	int n = 0;
+	PARTS_LIST_FOREACH(p)
+		n++;
+	WARNING("RDUMP [%s] nr=%d", why, n);
+	int i = 0, dumped = 0;
+	PARTS_LIST_FOREACH(p) {
+		struct parts_common *common = &p->states[0].common;
+		WARNING("RDUMP [%s] %d no=%d ctrl=%d z=%d z2=%d show=%d alpha=%d pos=%d,%d w=%d h=%d ox=%d oy=%d st=%d tex=%d chk=%d link=%d lfrom=%d hov=%d par=%d",
+				why, i++, p->no, p->controller_no, p->sp.z, p->sp.z2,
+				p->global.show, (int)p->global.alpha,
+				p->global.pos.x, p->global.pos.y,
+				common->w, common->h, common->origin_offset.x, common->origin_offset.y,
+				p->states[0].type, (int)common->texture.handle,
+				(int)p->checked, p->linked_to, p->linked_from, p->is_hovered,
+				p->parent ? p->parent->no : -1);
+		if (p->states[0].type == PARTS_TEXT) {
+			struct string *s = parts_text_get(&p->states[0].text);
+			char hex[3 * 49 + 1];
+			dump_hex(hex, sizeof(hex), s->text, 48);
+			WARNING("RDUMPTXT no=%d lines=%u size=%d text=%s", p->no,
+					p->states[0].text.nr_lines, s->size, hex);
+			free_string(s);
+		}
+		if (p->global.show && p->global.alpha > 0 && common->texture.handle &&
+				parts_dump_texture(&common->texture, "rd", p->no, p->states[0].type))
+			dumped++;
+	}
+	WARNING("RDUMP [%s] done tex=%d", why, dumped);
+}
+
+static void parts_render_dump_check(void)
+{
+	static char *marker;
+	if (!config.trace_vm)
+		return;
+	if (!marker)
+		marker = path_join(config.game_dir, ".render-dump");
+	if (!file_exists(marker))
+		return;
+	remove(marker);
+	parts_render_dump("marker");
 }
 
 void PE_UpdateComponent(possibly_unused int passed_time)
@@ -1269,6 +1373,7 @@ void PE_UpdateComponent(possibly_unused int passed_time)
 	}
 
 	parts_dump_when_settled();
+	parts_render_dump_check();
 }
 
 bool parts_message_window_show = true;

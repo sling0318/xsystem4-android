@@ -528,6 +528,7 @@ bool parts_3dlayer_create_plugin(struct parts_3dlayer *l);
 void parts_text_free(struct parts_text *t);
 struct string *parts_text_line_get(struct parts_text_line *line);
 struct string *parts_text_get(struct parts_text *t);
+bool parts_dump_texture(Texture *t, const char *tag, int no, int state);
 
 // render.c
 void parts_render_init(void);

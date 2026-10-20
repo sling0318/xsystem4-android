@@ -15,6 +15,7 @@
  */
 
 #include <assert.h>
+#include <stdio.h>
 #include "system4.h"
 #include "system4/cg.h"
 #include "system4/string.h"
@@ -604,6 +605,33 @@ bool parts_build_construction_process(struct parts *parts,
 		}
 	}
 	parts_dirty(parts);
+
+	if (config.trace_vm) {
+		// The title menu's labels are baked canvases (Create + CopyText), so
+		// gfx_render_textf never sees the on-screen copy. Log the style the
+		// game actually passed and dump the canvas itself; that distinguishes
+		// a doubled text op from a renderer artifact without a screenshot.
+		struct parts_cp_op *dbg;
+		TAILQ_FOREACH(dbg, &cproc->ops, entry) {
+			if (dbg->type != PARTS_CP_DRAW_TEXT && dbg->type != PARTS_CP_COPY_TEXT)
+				continue;
+			struct parts_cp_text *t = &dbg->text;
+			struct text_style *ts = &t->style;
+			char hex[3 * 49 + 1];
+			int hn = 0;
+			for (int i = 0; i < 48 && t->text->text[i] && hn < (int)sizeof(hex) - 3; i++)
+				hn += snprintf(hex + hn, sizeof(hex) - hn, "%02X",
+						(unsigned char)t->text->text[i]);
+			hex[hn] = '\0';
+			WARNING("CPTXT no=%d op=%s x=%d y=%d face=%u size=%.1f bold=%.2f edge=%.1f color=%d,%d,%d,%d eco=%d,%d,%d,%d spacing=%d hex=%s",
+					parts->no, dbg->type == PARTS_CP_DRAW_TEXT ? "draw" : "copy",
+					t->x, t->y, ts->face, ts->size, ts->bold_width, ts->edge_left,
+					ts->color.r, ts->color.g, ts->color.b, ts->color.a,
+					ts->edge_color.r, ts->edge_color.g, ts->edge_color.b, ts->edge_color.a,
+					(int)ts->font_spacing, hex);
+		}
+		parts_dump_texture(&cproc->common.texture, "cp", parts->no, parts->state);
+	}
 	return true;
 }
 

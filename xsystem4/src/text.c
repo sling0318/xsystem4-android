@@ -21,6 +21,7 @@
 #include "system4/utfsjis.h"
 #include "utfgbk.h"
 
+#include <stdio.h>
 #include <string.h>
 
 #include "gfx/gfx.h"
@@ -280,18 +281,20 @@ float gfx_render_textf(Texture *dst, float x, int y, char *msg, struct text_styl
 	// half a char apart; CPBUILD proved one text op per canvas and the DCF/CG
 	// carry no baked labels, so log every render call to catch the second one.
 	if (config.trace_vm) {
-		char head[32];
-		int n = 0;
-		while (msg[n] && n < 12) {
-			if ((unsigned char)msg[n] < 0x80 && !msg[n]) break;
+		char hex[3 * 25 + 1];
+		int n = 0, hn = 0;
+		while (msg[n] && n < 24) {
 			n += text_2byte(msg[n]) ? 2 : 1;
+			if (n > 24)
+				n = 24;
 		}
-		if (n > 12) n = 12;
-		memcpy(head, msg, n);
-		head[n] = 0;
-		WARNING("RTXT dst=%u x=%.1f y=%d blend=%d size=%d edge=%.2f bold=%.2f \"%s\"",
-				dst ? dst->handle : 0, x, y, (int)blend, ts->size,
-				text_style_edge_width(ts), ts->bold_width, head);
+		for (int i = 0; i < n; i++)
+			hn += snprintf(hex + hn, sizeof(hex) - hn, "%02X", (unsigned char)msg[i]);
+		hex[hn] = '\0';
+		WARNING("RTXT dst=%u dw=%d dh=%d x=%.1f y=%d blend=%d size=%.1f edge=%.2f bold=%.2f hex=%s",
+				dst ? dst->handle : 0, dst ? dst->w : 0, dst ? dst->h : 0,
+				x, y, (int)blend, ts->size,
+				text_style_edge_width(ts), ts->bold_width, hex);
 	}
 	enum font_weight weight = gfx_int_to_font_weight(ts->weight);
 	struct font_size *font_size = text_style_font_size(ts);
