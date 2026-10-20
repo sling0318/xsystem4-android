@@ -33,4 +33,7 @@ struct string;
 int text_index(const char *src, int index);
 struct string *text_string_copy(const struct string *s, int index, int len);
 
+/* Number of characters in a charset-aware string. */
+int text_length(const char *src);
+
 #endif

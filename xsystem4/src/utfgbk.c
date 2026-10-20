@@ -192,6 +192,16 @@ int text_index(const char *_src, int index)
 	return src[i] ? i : -1;
 }
 
+int text_length(const char *src)
+{
+	int n = 0;
+	while (*src) {
+		src += (text_2byte(*src) && src[1]) ? 2 : 1;
+		n++;
+	}
+	return n;
+}
+
 // string_copy() with charset-aware indexing.
 struct string *text_string_copy(const struct string *s, int index, int len)
 {

@@ -1586,12 +1586,14 @@ static enum opcode execute_instruction(enum opcode opcode)
 	}
 	case S_LENGTH: {
 		int str = stack_pop_var()->i;
-		stack_push(sjis_count_char(heap_get_string(str)->text));
+		struct string *s = heap_get_string(str);
+		stack_push(config.gbk_text ? text_length(s->text) : sjis_count_char(s->text));
 		break;
 	}
 	case S_LENGTH2: {
 		int str = stack_pop().i;
-		stack_push(sjis_count_char(heap_get_string(str)->text));
+		struct string *s = heap_get_string(str);
+		stack_push(config.gbk_text ? text_length(s->text) : sjis_count_char(s->text));
 		heap_unref(str);
 		break;
 	}
