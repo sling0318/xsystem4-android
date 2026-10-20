@@ -1465,9 +1465,8 @@ static int PartsEngine_GetActivityPartsNumber(struct string *name, struct string
 				break;
 			}
 		}
-		if (!known) {
-			if (nr_seen < 128)
-				seen[nr_seen++] = strdup(parts_name->text);
+		if (!known && nr_seen < 128) {
+			seen[nr_seen++] = strdup(parts_name->text);
 			WARNING("INTENT partsNumber act=%s part=%s -> not found",
 					display_utf0(name->text), display_utf0(parts_name->text));
 		}
