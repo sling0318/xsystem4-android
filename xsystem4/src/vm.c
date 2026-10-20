@@ -2395,6 +2395,12 @@ static int game_action_function(enum vm_game_action action)
 	case VM_GAME_ACTION_QUICK_LOAD:
 		name = "Ｓ＿簡易ロード";
 		break;
+	case VM_GAME_ACTION_OPEN_SAVE:
+		name = "OpenSave";
+		break;
+	case VM_GAME_ACTION_OPEN_LOAD:
+		name = "OpenLoad";
+		break;
 	default:
 		return -1;
 	}

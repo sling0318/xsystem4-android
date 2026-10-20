@@ -25,9 +25,11 @@ class XSystem4Activity : SDLActivity() {
 
         private const val ACTION_QUICK_SAVE = 1
         private const val ACTION_QUICK_LOAD = 2
+        private const val ACTION_OPEN_SAVE = 3
+        private const val ACTION_OPEN_LOAD = 4
     }
 
-    private var lastQuickActionAt = 0L
+    private var lastGameActionAt = 0L
 
     private external fun nativeQueueGameAction(action: Int)
 
@@ -35,20 +37,24 @@ class XSystem4Activity : SDLActivity() {
         super.onCreate(savedInstanceState)
         // Workaround for https://github.com/libsdl-org/SDL/issues/8995
         SDLActivity.setWindowStyle(true)
-        setupQuickSaveOverlay()
+        setupSaveLoadOverlay()
     }
 
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
 
-    private fun setupQuickSaveOverlay() {
+    private fun setupSaveLoadOverlay() {
         val root = findViewById<ViewGroup>(android.R.id.content) ?: return
 
         val panel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
         }
-        panel.addView(createQuickButton("快存") { triggerQuickAction(ACTION_QUICK_SAVE) })
-        panel.addView(createQuickButton("快读") { triggerQuickAction(ACTION_QUICK_LOAD) },
+        panel.addView(createQuickButton("快存") { triggerGameAction(ACTION_QUICK_SAVE) })
+        panel.addView(createQuickButton("快读") { triggerGameAction(ACTION_QUICK_LOAD) },
+            LinearLayout.LayoutParams(dp(62), dp(36)).apply { topMargin = dp(8) })
+        panel.addView(createQuickButton("存档") { triggerGameAction(ACTION_OPEN_SAVE) },
+            LinearLayout.LayoutParams(dp(62), dp(36)).apply { topMargin = dp(16) })
+        panel.addView(createQuickButton("读档") { triggerGameAction(ACTION_OPEN_LOAD) },
             LinearLayout.LayoutParams(dp(62), dp(36)).apply { topMargin = dp(8) })
 
         val lp = FrameLayout.LayoutParams(
@@ -79,11 +85,11 @@ class XSystem4Activity : SDLActivity() {
         return File(saveDir, "QC.asd")
     }
 
-    private fun triggerQuickAction(action: Int) {
+    private fun triggerGameAction(action: Int) {
         val now = SystemClock.uptimeMillis()
-        if (now - lastQuickActionAt < 500)
+        if (now - lastGameActionAt < 500)
             return
-        lastQuickActionAt = now
+        lastGameActionAt = now
 
         if (action == ACTION_QUICK_LOAD) {
             val saveFile = quickSaveFile()
@@ -94,11 +100,10 @@ class XSystem4Activity : SDLActivity() {
         }
 
         nativeQueueGameAction(action)
-        Toast.makeText(
-            this,
-            if (action == ACTION_QUICK_SAVE) "已快速存档" else "已快速读档",
-            Toast.LENGTH_SHORT
-        ).show()
+        when (action) {
+            ACTION_QUICK_SAVE -> Toast.makeText(this, "已快速存档", Toast.LENGTH_SHORT).show()
+            ACTION_QUICK_LOAD -> Toast.makeText(this, "已快速读档", Toast.LENGTH_SHORT).show()
+        }
     }
 
     override fun getLibraries(): Array<String> {

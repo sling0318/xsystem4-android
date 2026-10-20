@@ -112,6 +112,8 @@ enum vm_game_action {
 	VM_GAME_ACTION_NONE = 0,
 	VM_GAME_ACTION_QUICK_SAVE,
 	VM_GAME_ACTION_QUICK_LOAD,
+	VM_GAME_ACTION_OPEN_SAVE,
+	VM_GAME_ACTION_OPEN_LOAD,
 };
 
 int vm_execute_ain(struct ain *program);
