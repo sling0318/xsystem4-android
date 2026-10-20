@@ -2456,13 +2456,13 @@ static void vm_execute_loop(void)
 					// the save/load UI doesn't render on top of battle/map parts.
 					if (action == VM_GAME_ACTION_OPEN_SAVE ||
 					    action == VM_GAME_ACTION_OPEN_LOAD) {
-						call_helper("SYS_画面保管");
+						call_helper("PARTS_Save");
 					}
 					function_call(fno, instr_ptr);
 					// After the save/load scene returns, restore the screen.
 					if (action == VM_GAME_ACTION_OPEN_SAVE ||
 					    action == VM_GAME_ACTION_OPEN_LOAD) {
-						call_helper("SYS_画面復帰");
+						call_helper("PARTS_Load");
 					}
 				}
 				continue;
