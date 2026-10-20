@@ -510,40 +510,6 @@ void parts_set_show(struct parts *parts, bool show)
 	parts_dirty(parts);
 }
 
-// A render-only blackout: hide every parts that existed when the save/load
-// UI opened, without touching their visibility flags (which are serialized
-// into save files). Parts created afterwards (the save UI itself) still draw.
-static int *blackout_parts;
-static int blackout_count;
-
-void parts_blackout_begin(void)
-{
-	parts_blackout_end();
-	int n = 0;
-	struct parts *p;
-	PARTS_LIST_FOREACH(p)
-		n++;
-	blackout_parts = xmalloc(n * sizeof(int));
-	PARTS_LIST_FOREACH(p)
-		blackout_parts[blackout_count++] = p->no;
-}
-
-void parts_blackout_end(void)
-{
-	free(blackout_parts);
-	blackout_parts = NULL;
-	blackout_count = 0;
-}
-
-bool parts_blackout_skip(int parts_no)
-{
-	for (int i = 0; i < blackout_count; i++) {
-		if (blackout_parts[i] == parts_no)
-			return true;
-	}
-	return false;
-}
-
 static void parts_update_global_alpha(struct parts *parts, int parent_alpha)
 {
 	parts->global.alpha = parent_alpha * (parts->local.alpha / 255.0f);

@@ -15,6 +15,7 @@
  */
 
 #include <stdbool.h>
+#include <stdlib.h>
 #include <stddef.h>
 #include <stdio.h>
 
@@ -37,6 +38,36 @@ static TAILQ_HEAD(listhead, sprite) sprite_list = TAILQ_HEAD_INITIALIZER(sprite_
 
 static Texture wp = {0};
 static bool wallpaper_hidden;
+static struct sprite **blackout_sprites;
+static int blackout_count;
+
+void scene_blackout_begin(void)
+{
+	scene_blackout_end();
+	int n = 0;
+	struct sprite *sp;
+	TAILQ_FOREACH(sp, &sprite_list, entry)
+		n++;
+	blackout_sprites = xmalloc(n * sizeof(*blackout_sprites));
+	TAILQ_FOREACH(sp, &sprite_list, entry)
+		blackout_sprites[blackout_count++] = sp;
+}
+
+void scene_blackout_end(void)
+{
+	free(blackout_sprites);
+	blackout_sprites = NULL;
+	blackout_count = 0;
+}
+
+bool scene_blackout_skip(struct sprite *sp)
+{
+	for (int i = 0; i < blackout_count; i++) {
+		if (blackout_sprites[i] == sp)
+			return true;
+	}
+	return false;
+}
 
 void scene_register_sprite(struct sprite *sp)
 {
@@ -84,6 +115,8 @@ void scene_render(void)
 
 	struct sprite *sp;
 	TAILQ_FOREACH(sp, &sprite_list, entry) {
+		if (scene_blackout_skip(sp))
+			continue;
 		if (sp->render)
 			sp->render(sp);
 		else

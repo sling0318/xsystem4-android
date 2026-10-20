@@ -26,7 +26,6 @@
 
 #include "gfx/gfx.h"
 #include "sact.h"
-#include "parts.h"
 #include "scene.h"
 #include "sprite.h"
 #include "xsystem4.h"
@@ -654,10 +653,7 @@ void parts_engine_render(possibly_unused struct sprite *_)
 
 void parts_sprite_render(struct sprite *sp)
 {
-	struct parts *parts = (struct parts*)sp;
-	if (parts_blackout_skip(parts->no))
-		return;
-	parts_render(parts);
+	parts_render((struct parts*)sp);
 }
 
 static bool pe_dirty = false;

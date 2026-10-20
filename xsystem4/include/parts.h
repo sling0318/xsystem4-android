@@ -23,9 +23,6 @@ struct page;
 struct string;
 
 // parts.c
-void parts_blackout_begin(void);
-void parts_blackout_end(void);
-bool parts_blackout_skip(int parts_no);
 void PE_enable_multi_controller(void);
 bool PE_Init(void);
 void PE_Reset(void);

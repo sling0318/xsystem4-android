@@ -35,7 +35,6 @@
 
 #include "debugger.h"
 #include "input.h"
-#include "parts.h"
 #include "scene.h"
 #include "savedata.h"
 #include "vm.h"
@@ -2464,7 +2463,7 @@ static void vm_execute_loop(void)
 							 action == VM_GAME_ACTION_OPEN_LOAD;
 					if (native_ui) {
 						call_helper("hideGameObject");
-						parts_blackout_begin();
+						scene_blackout_begin();
 						scene_set_wallpaper_visible(false);
 					}
 					function_call(fno, instr_ptr);
@@ -2473,7 +2472,7 @@ static void vm_execute_loop(void)
 					// scene is closed/cancelled. That matches the game.
 					if (native_ui) {
 						scene_set_wallpaper_visible(true);
-						parts_blackout_end();
+						scene_blackout_end();
 						call_helper("restoreGameObject");
 					}
 				}
