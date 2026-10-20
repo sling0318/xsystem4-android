@@ -427,6 +427,7 @@ struct parts {
 	// back; it is deliberately not part of the parts save stream.
 	bool checked;
 	int checkbox_color[3];
+	bool flat_color_base;
 	// The checked-state box graphic (ＣＧ名＋"／チェック／通常"), loaded by the
 	// activity loader for type-1 parts; drawn instead of the state CG while
 	// checked. Windows original shows a red check mark there.

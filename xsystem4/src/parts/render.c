@@ -196,6 +196,15 @@ static void parts_render_cg(struct parts *parts, struct parts_common *common)
 		parts->global.multiply_color.g / 255.0f,
 		parts->global.multiply_color.b / 255.0f,
 	};
+	if (parts->flat_color_base) {
+		// The config page's colour swatches are a white flat canvas; the game
+		// supplies the palette colour through SetCheckBoxColor, not 乗算色.
+		multiply_color = (vec3){
+			parts->checkbox_color[0] / 255.0f,
+			parts->checkbox_color[1] / 255.0f,
+			parts->checkbox_color[2] / 255.0f,
+		};
+	}
 	parts_render_texture(&common->texture, mw_transform, &r, parts->global.alpha / 255.0,
 			add_color, multiply_color, parts->draw_filter,
 			parts->global.alpha_clipper_parts_no);

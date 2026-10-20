@@ -144,6 +144,7 @@ bool PE_parts_checked(int parts_no);
 // archive has no such entry.
 bool PE_parts_set_checked_cg(int parts_no, struct string *cg_name);
 void PE_parts_set_checkbox_color(int parts_no, int r, int g, int b);
+void PE_parts_set_flat_color_base(int parts_no, bool flat);
 // channel: 0=R 1=G 2=B; returns 255 for an unknown part or channel
 int PE_parts_checkbox_color(int parts_no, int channel);
 

@@ -76,6 +76,7 @@ static void parts_init(struct parts *parts)
 	parts->checked = false;
 	// 乘算色式的默认值：没被 SetCheckBoxColor 写过之前当作不染色
 	parts->checkbox_color[0] = parts->checkbox_color[1] = parts->checkbox_color[2] = 255;
+	parts->flat_color_base = false;
 	parts->on_cursor_sound = -1;
 	parts->on_click_sound = -1;
 	parts->origin_mode = 1;
@@ -1244,7 +1245,7 @@ static bool parts_dump_order(const char *why)
 	WARNING("PDUMP [%s] frame=%d nr=%d, draw order lowest first", why, parts_dump_frame, n);
 	int i = 0;
 	PARTS_LIST_FOREACH(p) {
-		WARNING("PDUMP [%s] %d no=%d sp=%p z=%d z2=%d gz=%d lz=%d show=%d alpha=%d pos=%d,%d w=%d h=%d ox=%d oy=%d st=%d tex=%d chk=%d ctrl=%d link=%d lfrom=%d hov=%d par=%d",
+		WARNING("PDUMP [%s] %d no=%d sp=%p z=%d z2=%d gz=%d lz=%d show=%d alpha=%d pos=%d,%d w=%d h=%d ox=%d oy=%d st=%d tex=%d chk=%d cc=%d,%d,%d flat=%d ctrl=%d link=%d lfrom=%d hov=%d par=%d",
 				why, i++, p->no, (void *)&p->sp, p->sp.z, p->sp.z2, p->global.z, p->local.z,
 				p->global.show, (int)p->global.alpha,
 				p->global.pos.x, p->global.pos.y,
@@ -1252,7 +1253,9 @@ static bool parts_dump_order(const char *why)
 				p->states[0].common.origin_offset.x, p->states[0].common.origin_offset.y,
 				p->states[0].type,
 				(int)p->states[0].common.texture.handle,
-				(int)p->checked, p->controller_no,
+				(int)p->checked,
+				p->checkbox_color[0], p->checkbox_color[1], p->checkbox_color[2],
+				(int)p->flat_color_base, p->controller_no,
 				p->linked_to, p->linked_from, p->is_hovered,
 				p->parent ? p->parent->no : -1);
 	}
@@ -1298,14 +1301,17 @@ static void parts_render_dump(const char *why)
 	int i = 0, dumped = 0;
 	PARTS_LIST_FOREACH(p) {
 		struct parts_common *common = &p->states[0].common;
-		WARNING("RDUMP [%s] %d no=%d ctrl=%d z=%d z2=%d show=%d alpha=%d mul=%d,%d,%d pos=%d,%d w=%d h=%d ox=%d oy=%d st=%d tex=%d chk=%d link=%d lfrom=%d hov=%d par=%d",
+		WARNING("RDUMP [%s] %d no=%d ctrl=%d z=%d z2=%d show=%d alpha=%d mul=%d,%d,%d pos=%d,%d w=%d h=%d ox=%d oy=%d st=%d tex=%d chk=%d cc=%d,%d,%d flat=%d link=%d lfrom=%d hov=%d par=%d",
 				why, i++, p->no, p->controller_no, p->sp.z, p->sp.z2,
 				p->global.show, (int)p->global.alpha,
 				p->global.multiply_color.r, p->global.multiply_color.g, p->global.multiply_color.b,
 				p->global.pos.x, p->global.pos.y,
 				common->w, common->h, common->origin_offset.x, common->origin_offset.y,
 				p->states[0].type, (int)common->texture.handle,
-				(int)p->checked, p->linked_to, p->linked_from, p->is_hovered,
+				(int)p->checked,
+				p->checkbox_color[0], p->checkbox_color[1], p->checkbox_color[2],
+				(int)p->flat_color_base,
+				p->linked_to, p->linked_from, p->is_hovered,
 				p->parent ? p->parent->no : -1);
 		if (p->states[0].type == PARTS_TEXT) {
 			struct string *s = parts_text_get(&p->states[0].text);
@@ -2502,6 +2508,16 @@ int PE_parts_checkbox_color(int parts_no, int channel)
 	if (!parts || channel < 0 || channel > 2)
 		return 255;
 	return parts->checkbox_color[channel];
+}
+
+// A flat-colour button (the config page's colour swatches) has a white base
+// canvas; the game paints it at runtime with SetCheckBoxColor, so the renderer
+// uses checkbox_color as the multiply colour for this part.
+void PE_parts_set_flat_color_base(int parts_no, bool flat)
+{
+	struct parts *parts = parts_try_get(parts_no);
+	if (parts)
+		parts->flat_color_base = flat;
 }
 
 struct parts_scroll *PE_parts_scroll(int parts_no)

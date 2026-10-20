@@ -918,14 +918,14 @@ static void activity_compose_flat_color(int parts_no, struct ex_tree *info)
 	int h = act_list_num(size, 1, 0);
 	if (w <= 0 || h <= 0)
 		return;
-	int r = act_list_num(color, 0, 200);
-	int g = act_list_num(color, 1, 200);
-	int b = act_list_num(color, 2, 200);
+	// White base: SetCheckBoxColor supplies the palette colour and the
+	// renderer multiplies it in (parts_render_cg's flat_color_base branch).
 	PE_ClearPartsConstructionProcess(parts_no, 1);
 	if (!PE_AddCreatePixelOnlyToPartsConstructionProcess(parts_no, w, h, 1))
 		return;
-	PE_AddFillToPartsConstructionProcess(parts_no, 0, 0, w, h, r, g, b, 1);
+	PE_AddFillToPartsConstructionProcess(parts_no, 0, 0, w, h, 255, 255, 255, 1);
 	PE_BuildPartsConstructionProcess(parts_no, 1);
+	PE_parts_set_flat_color_base(parts_no, true);
 }
 
 // Track which unhandled .pactex fields have been complained about already.
