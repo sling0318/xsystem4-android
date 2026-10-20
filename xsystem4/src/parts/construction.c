@@ -517,6 +517,31 @@ static bool build_gray_filter(struct parts_construction_process *cproc, struct p
 bool parts_build_construction_process(struct parts *parts,
 		struct parts_construction_process *cproc)
 {
+	// TEMP DEBUG (ghost3): the title menu's first button draws its label
+	// twice, half a char apart; log every Build's op sequence so a doubled
+	// text op (accumulated replay without Clear) is unmistakable.
+	if (config.trace_vm) {
+		struct parts_cp_op *dbg;
+		int n = 0;
+		TAILQ_FOREACH(dbg, &cproc->ops, entry)
+			n++;
+		char seq[128];
+		int off = 0;
+		TAILQ_FOREACH(dbg, &cproc->ops, entry) {
+			if (off >= (int)sizeof(seq) - 4)
+				break;
+			switch (dbg->type) {
+			case PARTS_CP_CREATE: seq[off++] = 'C'; break;
+			case PARTS_CP_CG: seq[off++] = 'G'; break;
+			case PARTS_CP_RESIZE_CANVAS: seq[off++] = 'R'; break;
+			case PARTS_CP_DRAW_TEXT: seq[off++] = 'T'; break;
+			case PARTS_CP_COPY_TEXT: seq[off++] = 't'; break;
+			default: seq[off++] = '?'; break;
+			}
+			seq[off] = 0;
+		}
+		WARNING("CPBUILD no=%d ops=%d [%s]", parts->no, n, seq);
+	}
 	struct parts_cp_op *op;
 	TAILQ_FOREACH(op, &cproc->ops, entry) {
 		switch (op->type) {
