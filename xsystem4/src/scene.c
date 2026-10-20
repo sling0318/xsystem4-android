@@ -40,6 +40,16 @@ static Texture wp = {0};
 static bool wallpaper_hidden;
 static struct sprite **blackout_sprites;
 static int blackout_count;
+static struct sprite blackout_sprite;
+static struct texture blackout_tex;
+static bool blackout_sprite_registered;
+
+static void blackout_sprite_render(struct sprite *sp)
+{
+	(void)sp;
+	Rectangle r = RECT(0, 0, config.view_width, config.view_height);
+	gfx_render_texture(&blackout_tex, &r);
+}
 
 void scene_blackout_begin(void)
 {
@@ -51,13 +61,32 @@ void scene_blackout_begin(void)
 	blackout_sprites = xmalloc(n * sizeof(*blackout_sprites));
 	TAILQ_FOREACH(sp, &sprite_list, entry)
 		blackout_sprites[blackout_count++] = sp;
+
+	// The save/load UI is drawn above the game scene by the same renderer,
+	// but some game content (background, battle cards) is not part of the
+	// scene sprite list. A full-screen black sprite at z=999 covers everything
+	// below the save UI parts (group z=1000), including stale framebuffer
+	// content, without touching any save state.
+	if (!blackout_tex.handle)
+		gfx_init_texture_rgb(&blackout_tex, 1, 1, (SDL_Color){0, 0, 0, 255});
+	blackout_sprite.z = 999;
+	blackout_sprite.has_pixel = true;
+	blackout_sprite.render = blackout_sprite_render;
+	scene_register_sprite(&blackout_sprite);
+	blackout_sprite_registered = true;
+	scene_dirty();
 }
 
 void scene_blackout_end(void)
 {
+	if (blackout_sprite_registered) {
+		scene_unregister_sprite(&blackout_sprite);
+		blackout_sprite_registered = false;
+	}
 	free(blackout_sprites);
 	blackout_sprites = NULL;
 	blackout_count = 0;
+	scene_dirty();
 }
 
 bool scene_blackout_skip(struct sprite *sp)
