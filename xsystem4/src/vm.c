@@ -2451,20 +2451,8 @@ static void vm_execute_loop(void)
 			if (action != VM_GAME_ACTION_NONE) {
 				SDL_AtomicSet(&pending_game_action, VM_GAME_ACTION_NONE);
 				int fno = game_action_function(action);
-				if (fno >= 0) {
-					// For OpenSave/OpenLoad, freeze the current screen first so
-					// the save/load UI doesn't render on top of battle/map parts.
-					if (action == VM_GAME_ACTION_OPEN_SAVE ||
-					    action == VM_GAME_ACTION_OPEN_LOAD) {
-						call_helper("PARTS_Save");
-					}
+				if (fno >= 0)
 					function_call(fno, instr_ptr);
-					// After the save/load scene returns, restore the screen.
-					if (action == VM_GAME_ACTION_OPEN_SAVE ||
-					    action == VM_GAME_ACTION_OPEN_LOAD) {
-						call_helper("PARTS_Load");
-					}
-				}
 				continue;
 			}
 		}
