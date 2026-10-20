@@ -2375,7 +2375,7 @@ static enum opcode execute_instruction(enum opcode opcode)
 	return opcode;
 }
 
-static SDL_AtomicInt pending_game_action;
+static SDL_atomic_t pending_game_action;
 static int execute_depth;
 
 void vm_queue_game_action(enum vm_game_action action)
