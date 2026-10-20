@@ -1186,7 +1186,16 @@ void gfx_draw_quadrilateral(Texture *dst, Texture *src, struct gfx_vertex vertic
 void gfx_draw_glyph(Texture *dst, float dx, int dy, Texture *glyph, SDL_Color color, float scale_x, float bold_width, bool blend)
 {
 	if (blend) {
-		glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ZERO, GL_ONE);
+		/*
+		 * The alpha channel must be blended too. The old GL_ZERO/GL_ONE kept
+		 * the destination alpha, which is fine on an opaque sprite but makes
+		 * every blended glyph invisible on a transparent construction canvas:
+		 * the checkbox compose draws its label into a transparent canvas and
+		 * the text ended up with RGB but alpha 0 (the dumped canvas had
+		 * maxRGB=255, maxA=0).
+		 */
+		glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA,
+				GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
 	} else {
 		glBlendFunc(GL_ONE, GL_ZERO);
 		glBlendEquationSeparate(GL_FUNC_ADD, GL_MAX);
