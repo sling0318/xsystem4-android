@@ -53,6 +53,7 @@ void scene_unregister_sprite(struct sprite *sp);
 void scene_render(void);
 int scene_set_wp(int cg_no);
 int scene_set_wp_color(int r, int g, int b);
+void scene_set_wallpaper_visible(bool visible);
 int scene_set_wp_texture(struct texture *tex);
 void scene_set_sprite_z(struct sprite *sp, int z);
 void scene_set_sprite_z2(struct sprite *sp, int z, int z2);

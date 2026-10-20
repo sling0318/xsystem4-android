@@ -35,6 +35,8 @@
 
 #include "debugger.h"
 #include "input.h"
+#include "parts.h"
+#include "scene.h"
 #include "savedata.h"
 #include "vm.h"
 #include "vm/heap.h"
@@ -2455,15 +2457,25 @@ static void vm_execute_loop(void)
 					// The game's save lion hides the game objects before opening
 					// the save/load scene, so the UI doesn't render on top of
 					// battle/map parts. Do the same around the queued action.
+					// The parts blackout is render-only: it skips drawing parts
+					// that existed before the scene, including the battle field
+					// and wallpaper, without changing their save-file state.
 					bool native_ui = action == VM_GAME_ACTION_OPEN_SAVE ||
 							 action == VM_GAME_ACTION_OPEN_LOAD;
-					if (native_ui)
+					if (native_ui) {
 						call_helper("hideGameObject");
+						parts_blackout_begin();
+						scene_set_wallpaper_visible(false);
+					}
 					function_call(fno, instr_ptr);
-					// A successful load replaces the VM state, so this only runs
-					// when the scene is closed/cancelled. That matches the game.
-					if (native_ui)
+					// A successful load replaces the VM state and clears the
+					// blackout in vm_load_image(), so this only runs when the
+					// scene is closed/cancelled. That matches the game.
+					if (native_ui) {
+						scene_set_wallpaper_visible(true);
+						parts_blackout_end();
 						call_helper("restoreGameObject");
+					}
 				}
 				continue;
 			}

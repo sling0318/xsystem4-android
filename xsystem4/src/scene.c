@@ -36,6 +36,7 @@ bool scene_is_dirty = true;
 static TAILQ_HEAD(listhead, sprite) sprite_list = TAILQ_HEAD_INITIALIZER(sprite_list);
 
 static Texture wp = {0};
+static bool wallpaper_hidden;
 
 void scene_register_sprite(struct sprite *sp)
 {
@@ -76,7 +77,7 @@ void scene_unregister_sprite(struct sprite *sp)
 void scene_render(void)
 {
 	gfx_clear();
-	if (wp.handle) {
+	if (wp.handle && !wallpaper_hidden) {
 		Rectangle r = RECT(0, 0, wp.w, wp.h);
 		gfx_render_texture(&wp, &r);
 	}
@@ -113,6 +114,12 @@ int scene_set_wp_color(int r, int g, int b)
 	gfx_set_clear_color(r, g, b, 255);
 	scene_dirty();
 	return 1;
+}
+
+void scene_set_wallpaper_visible(bool visible)
+{
+	wallpaper_hidden = !visible;
+	scene_dirty();
 }
 
 int scene_set_wp_texture(Texture *tex)
