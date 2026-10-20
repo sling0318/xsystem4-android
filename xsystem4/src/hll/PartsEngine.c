@@ -1296,7 +1296,8 @@ static bool activity_load_pact(struct pe_activity *act, struct archive_data *dat
 	}
 	ex_free(ex);
 	if (config.trace_vm)
-		WARNING("pactex: %s -> %d parts", data->name, act->nr_parts);
+		WARNING("pactex: %s (activity=%s) -> %d parts", data->name,
+				display_utf0(act->name->text), act->nr_parts);
 	return true;
 }
 
