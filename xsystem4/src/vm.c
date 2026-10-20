@@ -2451,8 +2451,20 @@ static void vm_execute_loop(void)
 			if (action != VM_GAME_ACTION_NONE) {
 				SDL_AtomicSet(&pending_game_action, VM_GAME_ACTION_NONE);
 				int fno = game_action_function(action);
-				if (fno >= 0)
+				if (fno >= 0) {
+					// The game's save lion hides the game objects before opening
+					// the save/load scene, so the UI doesn't render on top of
+					// battle/map parts. Do the same around the queued action.
+					bool native_ui = action == VM_GAME_ACTION_OPEN_SAVE ||
+							 action == VM_GAME_ACTION_OPEN_LOAD;
+					if (native_ui)
+						call_helper("hideGameObject");
 					function_call(fno, instr_ptr);
+					// A successful load replaces the VM state, so this only runs
+					// when the scene is closed/cancelled. That matches the game.
+					if (native_ui)
+						call_helper("restoreGameObject");
+				}
 				continue;
 			}
 		}
@@ -2658,4 +2670,3 @@ _Noreturn void vm_exit(int code)
 #endif
 	sys_exit(code);
 }
-// overlay fix trigger

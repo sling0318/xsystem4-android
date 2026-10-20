@@ -6,7 +6,6 @@ import android.os.Bundle
 import android.os.Process
 import android.os.SystemClock
 import android.view.Gravity
-import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.LinearLayout
@@ -31,7 +30,6 @@ class XSystem4Activity : SDLActivity() {
     }
 
     private var lastGameActionAt = 0L
-    private var screenOverlay: View? = null
 
     private external fun nativeQueueGameAction(action: Int)
 
@@ -46,17 +44,6 @@ class XSystem4Activity : SDLActivity() {
 
     private fun setupSaveLoadOverlay() {
         val root = findViewById<ViewGroup>(android.R.id.content) ?: return
-
-        // Semi-transparent black overlay that covers the entire game surface.
-        // Shown when opening the native save/load UI to prevent battle/map
-        // parts from bleeding through behind the save slots.
-        screenOverlay = View(this).apply {
-            setBackgroundColor(Color.argb(200, 0, 0, 0))
-            visibility = View.GONE
-        }
-        root.addView(screenOverlay, FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.MATCH_PARENT,
-            FrameLayout.LayoutParams.MATCH_PARENT))
 
         val panel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -112,21 +99,7 @@ class XSystem4Activity : SDLActivity() {
             }
         }
 
-        // Show the dark overlay before opening the native save/load UI so
-        // that battle / map parts don't bleed through behind the slot list.
-        if (action == ACTION_OPEN_SAVE || action == ACTION_OPEN_LOAD) {
-            screenOverlay?.visibility = View.VISIBLE
-        }
-
         nativeQueueGameAction(action)
-
-        // Hide the overlay after a short delay — the save/load scene takes a
-        // few frames to render its own background. 500 ms is enough for the
-        // first frame of the modal to appear; if it closes quickly the overlay
-        // will be hidden again by the next call.
-        if (action == ACTION_OPEN_SAVE || action == ACTION_OPEN_LOAD) {
-            screenOverlay?.postDelayed({ screenOverlay?.visibility = View.GONE }, 500)
-        }
 
         when (action) {
             ACTION_QUICK_SAVE -> Toast.makeText(this, "已快速存档", Toast.LENGTH_SHORT).show()
