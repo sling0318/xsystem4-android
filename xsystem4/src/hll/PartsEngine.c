@@ -1467,11 +1467,17 @@ static void PartsEngine_GetActivityPartsName(struct string **out, struct string 
 {
 	struct pe_activity *act = activity_find(name->text);
 	struct activity_part *part = act ? activity_part_by_number(act, number) : NULL;
-	if (!part)
+	if (!part) {
+		if (config.trace_vm)
+			WARNING("INTENT partsName act=%s number=%d -> not found", display_utf0(name->text), number);
 		return;
+	}
 	if (*out)
 		free_string(*out);
 	*out = string_dup(part->name);
+	if (config.trace_vm)
+		WARNING("INTENT partsName act=%s number=%d -> %s", display_utf0(name->text), number,
+				display_utf0(part->name->text));
 }
 
 static void PartsEngine_AddActivityCloseParts(struct string *name, struct string *parts_name)
@@ -1554,12 +1560,24 @@ static void PartsEngine_AddActivityIntentDataDestination(struct string *name,
 static bool PartsEngine_IsExistActivityIntentData(struct string *name, struct string *parts_name)
 {
 	struct pe_activity *act = activity_find(name->text);
-	if (!act)
+	if (!act) {
+		if (config.trace_vm)
+			WARNING("INTENT isExist act=%s part=%s: no activity",
+					display_utf0(name->text), display_utf0(parts_name->text));
 		return false;
-	for (int i = 0; i < act->nr_intents; i++) {
-		if (!strcmp(act->intents[i].parts_name->text, parts_name->text))
-			return true;
 	}
+	for (int i = 0; i < act->nr_intents; i++) {
+		if (!strcmp(act->intents[i].parts_name->text, parts_name->text)) {
+			if (config.trace_vm)
+				WARNING("INTENT isExist act=%s part=%s -> true (%d dests)",
+						display_utf0(name->text), display_utf0(parts_name->text),
+						act->intents[i].nr_dests);
+			return true;
+		}
+	}
+	if (config.trace_vm)
+		WARNING("INTENT isExist act=%s part=%s -> false (intents=%d)",
+				display_utf0(name->text), display_utf0(parts_name->text), act->nr_intents);
 	return false;
 }
 
@@ -1569,9 +1587,16 @@ static int PartsEngine_NumofActivityIntentDataDestination(struct string *name, s
 	if (!act)
 		return 0;
 	for (int i = 0; i < act->nr_intents; i++) {
-		if (!strcmp(act->intents[i].parts_name->text, parts_name->text))
+		if (!strcmp(act->intents[i].parts_name->text, parts_name->text)) {
+			if (config.trace_vm)
+				WARNING("INTENT numof act=%s part=%s -> %d", display_utf0(name->text),
+						display_utf0(parts_name->text), act->intents[i].nr_dests);
 			return act->intents[i].nr_dests;
+		}
 	}
+	if (config.trace_vm)
+		WARNING("INTENT numof act=%s part=%s -> 0 (no intent)", display_utf0(name->text),
+				display_utf0(parts_name->text));
 	return 0;
 }
 
@@ -1585,11 +1610,19 @@ static void PartsEngine_GetActivityIntentDataDestination(struct string **out, in
 		struct activity_intent *it = &act->intents[i];
 		if (strcmp(it->parts_name->text, parts_name->text))
 			continue;
-		if (index < 0 || index >= it->nr_dests)
+		if (index < 0 || index >= it->nr_dests) {
+			if (config.trace_vm)
+				WARNING("INTENT dest act=%s part=%s index=%d -> out of range (%d)",
+						display_utf0(name->text), display_utf0(parts_name->text),
+						index, it->nr_dests);
 			return;
+		}
 		if (*out)
 			free_string(*out);
 		*out = string_dup(it->dests[index]);
+		if (config.trace_vm)
+			WARNING("INTENT dest act=%s part=%s index=%d -> %s", display_utf0(name->text),
+					display_utf0(parts_name->text), index, display_utf0(it->dests[index]->text));
 		return;
 	}
 }
