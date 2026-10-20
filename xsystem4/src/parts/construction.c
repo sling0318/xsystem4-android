@@ -21,6 +21,7 @@
 #include "system4/string.h"
 
 #include "xsystem4.h"
+#include "utfgbk.h"
 #include "asset_manager.h"
 #include "parts.h"
 #include "parts_internal.h"
@@ -300,6 +301,17 @@ static bool add_text_to_cproc(int parts_no, int x, int y, struct string *text,
 	if (!parts_state_valid(--state))
 		return false;
 
+	/*
+	 * A negative 文字間隔 is the game tightening the FNL bitmap font's cell:
+	 * the FNL glyph ink leaves padding inside the cell, the TTF ink fills it.
+	 * Honoring the negative value literally overlaps every stroke, which is
+	 * why the title menu's labels read as if they were drawn twice. Turn it
+	 * into the equivalent positive gap; build_copy_text widens the canvas to
+	 * match so nothing is clipped.
+	 */
+	if (char_space < 0)
+		char_space = -char_space;
+
 	struct parts_cp_op *op = xcalloc(1, sizeof(struct parts_cp_op));
 	op->type = op_type;
 	op->text = (struct parts_cp_text) {
@@ -492,13 +504,34 @@ static bool build_draw_text(struct parts_construction_process *cproc, struct par
 	return true;
 }
 
-static bool build_copy_text(struct parts_construction_process *cproc, struct parts_cp_text *op)
+static bool build_copy_text(struct parts *parts, struct parts_construction_process *cproc,
+		struct parts_cp_text *op)
 {
 	if (!cproc->common.texture.handle)
 		return false;
-	int w = ceilf(gfx_size_text (&op->style, op->text->text));
-	int h = ceilf(op->style.size + op->style.edge_up + op->style.edge_down);
-	gfx_fill_with_alpha(&cproc->common.texture, op->x, op->y, w, h,
+	// The canvas was measured for the FNL metrics. After turning a negative
+	// 文字間隔 into a positive gap the label needs a little more room, so grow
+	// the canvas before drawing; the part is centered by origin_offset, so the
+	// text stays in place.
+	int nr = text_count_char(op->text->text);
+	int need_w = op->x + (int)ceilf(gfx_size_text(&op->style, op->text->text))
+			+ (nr > 0 ? (nr - 1) * (int)op->style.font_spacing : 0) + 4;
+	int need_h = op->y + (int)ceilf(op->style.size + op->style.edge_up + op->style.edge_down) + 2;
+	if (need_w > cproc->common.texture.w || need_h > cproc->common.texture.h) {
+		struct parts_cp_create grow = {
+			.w = need_w > cproc->common.texture.w ? need_w : cproc->common.texture.w,
+			.h = need_h > cproc->common.texture.h ? need_h : cproc->common.texture.h,
+		};
+		build_resize_canvas(parts, cproc, &grow);
+	}
+	/*
+	 * CopyText builds a text-only canvas, so clear the whole thing rather than
+	 * just the measured text rect. The rect is a couple of pixels shorter than
+	 * the canvas (20 vs 22 on the title menu), and those leftover rows keep the
+	 * opaque black from Create, drawing a bar under every label.
+	 */
+	gfx_fill_with_alpha(&cproc->common.texture, 0, 0,
+			cproc->common.texture.w, cproc->common.texture.h,
 			op->style.edge_color.r, op->style.edge_color.g, op->style.edge_color.b, 0);
 	gfx_render_text(&cproc->common.texture, op->x, op->y, op->text->text, &op->style, false);
 	return true;
@@ -595,7 +628,7 @@ bool parts_build_construction_process(struct parts *parts,
 				return false;
 			break;
 		case PARTS_CP_COPY_TEXT:
-			if (!build_copy_text(cproc, &op->text))
+			if (!build_copy_text(parts, cproc, &op->text))
 				return false;
 			break;
 		case PARTS_CP_GRAY_FILTER:
