@@ -2419,6 +2419,24 @@ static int game_action_function(enum vm_game_action action)
 	return fno;
 }
 
+// Call a helper function with no args. Returns the function number or -1.
+static int call_helper(const char *name_utf8)
+{
+	char *sjis = utf2sjis(name_utf8, 0);
+	int fno = ain_get_function(ain, sjis);
+	free(sjis);
+	if (fno < 0 || fno >= ain->nr_functions) {
+		WARNING("Helper function not found: %s", name_utf8);
+		return -1;
+	}
+	if (ain->functions[fno].nr_args != 0) {
+		WARNING("Helper function takes arguments: %s", name_utf8);
+		return -1;
+	}
+	function_call(fno, instr_ptr);
+	return fno;
+}
+
 static void vm_execute_loop(void)
 {
 	for (;;) {
@@ -2433,8 +2451,20 @@ static void vm_execute_loop(void)
 			if (action != VM_GAME_ACTION_NONE) {
 				SDL_AtomicSet(&pending_game_action, VM_GAME_ACTION_NONE);
 				int fno = game_action_function(action);
-				if (fno >= 0)
+				if (fno >= 0) {
+					// For OpenSave/OpenLoad, freeze the current screen first so
+					// the save/load UI doesn't render on top of battle/map parts.
+					if (action == VM_GAME_ACTION_OPEN_SAVE ||
+					    action == VM_GAME_ACTION_OPEN_LOAD) {
+						call_helper("SYS_画面保管");
+					}
 					function_call(fno, instr_ptr);
+					// After the save/load scene returns, restore the screen.
+					if (action == VM_GAME_ACTION_OPEN_SAVE ||
+					    action == VM_GAME_ACTION_OPEN_LOAD) {
+						call_helper("SYS_画面復帰");
+					}
+				}
 				continue;
 			}
 		}
