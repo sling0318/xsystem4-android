@@ -110,8 +110,6 @@ union vm_value vm_copy(union vm_value v, enum ain_data_type type);
 
 enum vm_game_action {
 	VM_GAME_ACTION_NONE = 0,
-	VM_GAME_ACTION_QUICK_SAVE,
-	VM_GAME_ACTION_QUICK_LOAD,
 	VM_GAME_ACTION_OPEN_SAVE,
 	VM_GAME_ACTION_OPEN_LOAD,
 };

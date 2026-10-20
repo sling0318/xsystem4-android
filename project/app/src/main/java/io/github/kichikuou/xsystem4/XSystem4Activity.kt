@@ -10,9 +10,7 @@ import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
-import android.widget.Toast
 import org.libsdl.app.SDLActivity
-import java.io.File
 
 // Intent for this activity must have the following extras:
 // - EXTRA_GAME_ROOT (string): A path to the game installation.
@@ -23,10 +21,8 @@ class XSystem4Activity : SDLActivity() {
         const val EXTRA_SAVE_DIR = "SAVE_DIR"
         const val COMMAND_OPEN_PLAYING_MANUAL = 0x8000  // xsystem4/src/hll/SystemService.c
 
-        private const val ACTION_QUICK_SAVE = 1
-        private const val ACTION_QUICK_LOAD = 2
-        private const val ACTION_OPEN_SAVE = 3
-        private const val ACTION_OPEN_LOAD = 4
+        private const val ACTION_OPEN_SAVE = 1
+        private const val ACTION_OPEN_LOAD = 2
     }
 
     private var lastGameActionAt = 0L
@@ -49,12 +45,8 @@ class XSystem4Activity : SDLActivity() {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
         }
-        panel.addView(createQuickButton("快存") { triggerGameAction(ACTION_QUICK_SAVE) })
-        panel.addView(createQuickButton("快读") { triggerGameAction(ACTION_QUICK_LOAD) },
-            LinearLayout.LayoutParams(dp(62), dp(36)).apply { topMargin = dp(8) })
-        panel.addView(createQuickButton("存档") { triggerGameAction(ACTION_OPEN_SAVE) },
-            LinearLayout.LayoutParams(dp(62), dp(36)).apply { topMargin = dp(16) })
-        panel.addView(createQuickButton("读档") { triggerGameAction(ACTION_OPEN_LOAD) },
+        panel.addView(createActionButton("存档") { triggerGameAction(ACTION_OPEN_SAVE) })
+        panel.addView(createActionButton("读档") { triggerGameAction(ACTION_OPEN_LOAD) },
             LinearLayout.LayoutParams(dp(62), dp(36)).apply { topMargin = dp(8) })
 
         val lp = FrameLayout.LayoutParams(
@@ -64,7 +56,7 @@ class XSystem4Activity : SDLActivity() {
         root.addView(panel, lp)
     }
 
-    private fun createQuickButton(text: String, onClick: () -> Unit): TextView {
+    private fun createActionButton(text: String, onClick: () -> Unit): TextView {
         return TextView(this).apply {
             this.text = text
             gravity = Gravity.CENTER
@@ -80,31 +72,12 @@ class XSystem4Activity : SDLActivity() {
         }
     }
 
-    private fun quickSaveFile(): File? {
-        val saveDir = intent.getStringExtra(EXTRA_SAVE_DIR) ?: return null
-        return File(saveDir, "QC.asd")
-    }
-
     private fun triggerGameAction(action: Int) {
         val now = SystemClock.uptimeMillis()
         if (now - lastGameActionAt < 500)
             return
         lastGameActionAt = now
-
-        if (action == ACTION_QUICK_LOAD) {
-            val saveFile = quickSaveFile()
-            if (saveFile == null || !saveFile.exists()) {
-                Toast.makeText(this, "还没有快速存档", Toast.LENGTH_SHORT).show()
-                return
-            }
-        }
-
         nativeQueueGameAction(action)
-
-        when (action) {
-            ACTION_QUICK_SAVE -> Toast.makeText(this, "已快速存档", Toast.LENGTH_SHORT).show()
-            ACTION_QUICK_LOAD -> Toast.makeText(this, "已快速读档", Toast.LENGTH_SHORT).show()
-        }
     }
 
     override fun getLibraries(): Array<String> {
