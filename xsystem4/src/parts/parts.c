@@ -1200,11 +1200,13 @@ static bool parts_dump_order(const char *why)
 	WARNING("PDUMP [%s] frame=%d nr=%d, draw order lowest first", why, parts_dump_frame, n);
 	int i = 0;
 	PARTS_LIST_FOREACH(p) {
-		WARNING("PDUMP [%s] %d no=%d sp=%p z=%d z2=%d gz=%d lz=%d show=%d alpha=%d pos=%d,%d st=%d ctrl=%d par=%d",
+		WARNING("PDUMP [%s] %d no=%d sp=%p z=%d z2=%d gz=%d lz=%d show=%d alpha=%d pos=%d,%d st=%d tex=%d chk=%d ctrl=%d par=%d",
 				why, i++, p->no, (void *)&p->sp, p->sp.z, p->sp.z2, p->global.z, p->local.z,
 				p->global.show, (int)p->global.alpha,
 				p->global.pos.x, p->global.pos.y,
-				p->states[0].type, p->controller_no,
+				p->states[0].type,
+				(int)p->states[0].common.texture.handle,
+				(int)p->checked, p->controller_no,
 				p->parent ? p->parent->no : -1);
 	}
 	return true;
