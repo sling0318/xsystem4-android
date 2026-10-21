@@ -857,10 +857,14 @@ void vm_load_image(const char *key, const char *path)
 	enum savefile_error error = load_rsave_image(key, path);
 	switch (error) {
 	case SAVEFILE_SUCCESS:
+		// The loaded image replaces the whole VM state, so the injected
+		// openSave/openLoad frame never returns to its cleanup address.
+		vm_cancel_native_ui_cleanup();
 		return;
 	case SAVEFILE_INVALID_SIGNATURE:
 		// If not a System4 resume save file, read as a json.
 		load_json_image(key, path);
+		vm_cancel_native_ui_cleanup();
 		return;
 	default:
 		VM_ERROR("Failed to read VM image '%s': %s", display_sjis0(path), savefile_strerror(error));

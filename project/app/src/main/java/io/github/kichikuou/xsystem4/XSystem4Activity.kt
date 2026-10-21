@@ -1,7 +1,15 @@
 package io.github.kichikuou.xsystem4
 
+import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.os.Process
+import android.os.SystemClock
+import android.view.Gravity
+import android.view.ViewGroup
+import android.widget.FrameLayout
+import android.widget.LinearLayout
+import android.widget.TextView
 import org.libsdl.app.SDLActivity
 
 // Intent for this activity must have the following extras:
@@ -12,12 +20,64 @@ class XSystem4Activity : SDLActivity() {
         const val EXTRA_GAME_ROOT = "GAME_ROOT"
         const val EXTRA_SAVE_DIR = "SAVE_DIR"
         const val COMMAND_OPEN_PLAYING_MANUAL = 0x8000  // xsystem4/src/hll/SystemService.c
+
+        private const val ACTION_OPEN_SAVE = 1
+        private const val ACTION_OPEN_LOAD = 2
     }
+
+    private var lastGameActionAt = 0L
+
+    private external fun nativeQueueGameAction(action: Int)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // Workaround for https://github.com/libsdl-org/SDL/issues/8995
         SDLActivity.setWindowStyle(true)
+        setupSaveLoadOverlay()
+    }
+
+    private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
+
+    private fun setupSaveLoadOverlay() {
+        val root = findViewById<ViewGroup>(android.R.id.content) ?: return
+
+        val panel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+        }
+        panel.addView(createActionButton("存档") { triggerGameAction(ACTION_OPEN_SAVE) })
+        panel.addView(createActionButton("读档") { triggerGameAction(ACTION_OPEN_LOAD) },
+            LinearLayout.LayoutParams(dp(62), dp(36)).apply { topMargin = dp(8) })
+
+        val lp = FrameLayout.LayoutParams(
+            dp(62), FrameLayout.LayoutParams.WRAP_CONTENT,
+            Gravity.END or Gravity.CENTER_VERTICAL
+        ).apply { rightMargin = dp(12) }
+        root.addView(panel, lp)
+    }
+
+    private fun createActionButton(text: String, onClick: () -> Unit): TextView {
+        return TextView(this).apply {
+            this.text = text
+            gravity = Gravity.CENTER
+            setTextColor(Color.WHITE)
+            textSize = 14f
+            background = GradientDrawable().apply {
+                cornerRadius = dp(6).toFloat()
+                setColor(Color.argb(150, 0, 0, 0))
+                setStroke(dp(1), Color.argb(120, 255, 255, 255))
+            }
+            layoutParams = LinearLayout.LayoutParams(dp(62), dp(36))
+            setOnClickListener { onClick() }
+        }
+    }
+
+    private fun triggerGameAction(action: Int) {
+        val now = SystemClock.uptimeMillis()
+        if (now - lastGameActionAt < 500)
+            return
+        lastGameActionAt = now
+        nativeQueueGameAction(action)
     }
 
     override fun getLibraries(): Array<String> {

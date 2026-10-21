@@ -110,6 +110,16 @@ union vm_value vm_copy(union vm_value v, enum ain_data_type type);
 
 int vm_execute_ain(struct ain *program);
 void vm_call(int fno, int struct_page);
+
+enum vm_game_action {
+	VM_GAME_ACTION_NONE = 0,
+	VM_GAME_ACTION_OPEN_SAVE,
+	VM_GAME_ACTION_OPEN_LOAD,
+};
+
+void vm_queue_game_action(enum vm_game_action action);
+void vm_cancel_native_ui_cleanup(void);
+
 int vm_time(void);
 void vm_sleep(int ms);
 
