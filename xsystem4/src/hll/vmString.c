@@ -22,10 +22,11 @@
 #include "system4/utfsjis.h"
 
 #include "hll.h"
+#include "utfgbk.h"
 
 static int vmString_GetLength(struct string *string)
 {
-	return sjis_count_char(string->text);
+	return text_count_char(string->text);
 }
 
 static int vmString_GetLengthA(struct string *string)

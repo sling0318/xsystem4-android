@@ -2375,12 +2375,87 @@ static enum opcode execute_instruction(enum opcode opcode)
 	return opcode;
 }
 
-static void vm_execute(void)
+static SDL_atomic_t pending_game_action;
+static int execute_depth;
+
+void vm_queue_game_action(enum vm_game_action action)
+{
+	SDL_AtomicSet(&pending_game_action, action);
+}
+
+static int game_action_function(enum vm_game_action action)
+{
+	const char *name;
+	switch (action) {
+	case VM_GAME_ACTION_OPEN_SAVE:
+		name = "Ｓ＿セーブ";
+		break;
+	case VM_GAME_ACTION_OPEN_LOAD:
+		name = "Ｓ＿ロード";
+		break;
+	default:
+		return -1;
+	}
+
+	char *sjis_name = utf2sjis(name, 0);
+	int fno = ain_get_function(ain, sjis_name);
+	free(sjis_name);
+	if (fno < 0 || fno >= ain->nr_functions) {
+		WARNING("Game action function not found: %s", name);
+		return -1;
+	}
+	if (ain->functions[fno].nr_args != 0) {
+		WARNING("Game action function takes arguments: %s", name);
+		return -1;
+	}
+	return fno;
+}
+
+// function_call() only pushes a frame; the native UI function has not run yet
+// when it returns. Keep the resume point so the pending flag can be cleared
+// once the script returns there, or immediately when a load replaces the VM.
+static bool native_ui_cleanup_pending;
+static size_t native_ui_cleanup_ip;
+static int32_t native_ui_cleanup_depth;
+
+void vm_cancel_native_ui_cleanup(void)
+{
+	native_ui_cleanup_pending = false;
+}
+
+static void vm_execute_loop(void)
 {
 	for (;;) {
 		uint16_t opcode;
 		if (instr_ptr == VM_RETURN)
 			return;
+		// Script functions run on the VM thread. Queue actions from outside
+		// (e.g. the Android overlay) and dispatch them at an instruction
+		// boundary of the outermost execution.
+		if (execute_depth == 1) {
+			if (native_ui_cleanup_pending &&
+			    call_stack_ptr == native_ui_cleanup_depth &&
+			    instr_ptr == native_ui_cleanup_ip) {
+				native_ui_cleanup_pending = false;
+				continue;
+			}
+			int action = SDL_AtomicGet(&pending_game_action);
+			if (action != VM_GAME_ACTION_NONE) {
+				SDL_AtomicSet(&pending_game_action, VM_GAME_ACTION_NONE);
+				// A load replaces the VM state; injecting again while the
+				// native UI is still open would corrupt it.
+				if (native_ui_cleanup_pending)
+					continue;
+				int fno = game_action_function(action);
+				if (fno >= 0) {
+					native_ui_cleanup_pending = true;
+					native_ui_cleanup_depth = call_stack_ptr;
+					native_ui_cleanup_ip = instr_ptr;
+					function_call(fno, instr_ptr);
+				}
+				continue;
+			}
+		}
 		if (unlikely(instr_ptr >= ain->code_size)) {
 			VM_ERROR("Illegal instruction pointer: 0x%08lX", instr_ptr);
 		}
@@ -2388,6 +2463,13 @@ static void vm_execute(void)
 		opcode = execute_instruction(opcode);
 		instr_ptr += instructions[opcode].ip_inc;
 	}
+}
+
+static void vm_execute(void)
+{
+	execute_depth++;
+	vm_execute_loop();
+	execute_depth--;
 }
 
 static void call_global_destructors(void)
@@ -2439,6 +2521,9 @@ int vm_execute_ain(struct ain *program)
 {
 	ain = program;
 	setjmp(reset_buf);
+	execute_depth = 0;
+	SDL_AtomicSet(&pending_game_action, VM_GAME_ACTION_NONE);
+	native_ui_cleanup_pending = false;
 
 	// initialize VM state
 	if (!stack) {
