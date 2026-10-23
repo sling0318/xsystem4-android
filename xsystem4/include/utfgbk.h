@@ -36,4 +36,13 @@ struct string *text_string_copy(const struct string *s, int index, int len);
 /* Number of characters in a charset-aware string. */
 int text_length(const char *src);
 
+/* Charset-aware replacements for the byte/SJIS-based string mutators/queries
+ * in libsys4. Only used when config.gbk_text is set. */
+int text_find(const struct string *haystack, const struct string *needle);
+int text_get_char(const struct string *str, int i);
+void text_set_char(struct string **str, int i, unsigned int c);
+void text_push_back(struct string **s, int c);
+void text_pop_back(struct string **s);
+void text_erase(struct string **s, int index);
+
 #endif

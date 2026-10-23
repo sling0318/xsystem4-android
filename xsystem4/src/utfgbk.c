@@ -8,6 +8,7 @@
  * (at your option) any later version.
  */
 
+#include <string.h>
 #include "xsystem4.h"
 #include "system4/string.h"
 #include "utfgbk.h"
@@ -214,4 +215,117 @@ struct string *text_string_copy(const struct string *s, int index, int len)
 	if ((len = text_index(s->text + index, len)) < 0)
 		len = s->size - index;
 	return make_string(s->text + index, len);
+}
+
+static struct string *text_cow(struct string *s)
+{
+	if (s->cow && s->ref > 1) {
+		struct string *out = string_dup(s);
+		free_string(s);
+		return out;
+	}
+	if (s->cow)
+		s->cow = 0;
+	return s;
+}
+
+int text_find(const struct string *haystack, const struct string *needle)
+{
+	int c = 0;
+	for (int i = 0; i < haystack->size; i++, c++) {
+		if (!strncmp(haystack->text + i, needle->text, needle->size))
+			return c;
+		if (text_2byte(haystack->text[i]) && haystack->text[i+1])
+			i++;
+	}
+	return -1;
+}
+
+int text_get_char(const struct string *str, int i)
+{
+	if (i < 0)
+		return 0;
+	int off = text_index(str->text, i);
+	if (off < 0)
+		return 0;
+	if (text_2byte(str->text[off]) && str->text[off+1])
+		return (uint8_t)str->text[off] | ((uint8_t)str->text[off+1] << 8);
+	return (uint8_t)str->text[off];
+}
+
+void text_set_char(struct string **_str, int i, unsigned int c)
+{
+	struct string *str = *_str;
+	int off = text_index(str->text, i);
+	if (off < 0)
+		return;
+
+	if (c == 0) {
+		str = text_cow(str);
+		str->text[off] = '\0';
+		str->size = off;
+		*_str = str;
+		return;
+	}
+
+	int src_bytes = (text_2byte(str->text[off]) && str->text[off+1]) ? 2 : 1;
+	int dst_bytes = (text_2byte((uint8_t)c) && ((c >> 8) & 0xFF)) ? 2 : 1;
+
+	if (src_bytes == dst_bytes) {
+		str = text_cow(str);
+		str->text[off] = c & 0xFF;
+		if (dst_bytes == 2)
+			str->text[off+1] = (c >> 8) & 0xFF;
+		*_str = str;
+	} else if (src_bytes == 2 && dst_bytes == 1) {
+		str = text_cow(str);
+		memmove(str->text + off + 1, str->text + off + 2, str->size - off - 1);
+		str->text[off] = c & 0xFF;
+		str->size--;
+		*_str = str;
+	} else {
+		str = string_realloc(str, str->size + 1);
+		memmove(str->text + off + 2, str->text + off + 1, str->size - off - 1);
+		str->text[off] = c & 0xFF;
+		str->text[off+1] = (c >> 8) & 0xFF;
+		*_str = str;
+	}
+}
+
+void text_push_back(struct string **_s, int c)
+{
+	int bytes = (text_2byte((uint8_t)c) && ((c >> 8) & 0xFF)) ? 2 : 1;
+	size_t size = (*_s)->size;
+	struct string *s = string_realloc(*_s, size + bytes);
+	s->text[size] = c & 0xFF;
+	if (bytes == 2)
+		s->text[size+1] = (c >> 8) & 0xFF;
+	*_s = s;
+}
+
+void text_pop_back(struct string **s)
+{
+	struct string *str = *s = text_cow(*s);
+	int last = 0;
+	for (int i = 0; i < str->size; i++) {
+		last = i;
+		if (text_2byte(str->text[i]) && str->text[i+1])
+			i++;
+	}
+	str->text[last] = '\0';
+	str->size = last;
+}
+
+void text_erase(struct string **s, int index)
+{
+	struct string *str = *s;
+	if (index < 0)
+		index = 0;
+	int off = text_index(str->text, index);
+	if (off < 0)
+		return;
+	int bytes = (text_2byte(str->text[off]) && str->text[off+1]) ? 2 : 1;
+	str = *s = text_cow(str);
+	memmove(str->text + off, str->text + off + bytes, str->size - off - bytes + 1);
+	str->size -= bytes;
 }

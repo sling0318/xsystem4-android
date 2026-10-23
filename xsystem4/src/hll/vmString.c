@@ -75,6 +75,8 @@ static int vmString_StringToInt(struct string *string)
 
 static struct string *vmString_GetString(struct string *string, int index, int length)
 {
+	if (config.gbk_text)
+		return text_string_copy(string, index, length);
 	return string_copy(string, index, length);
 }
 
