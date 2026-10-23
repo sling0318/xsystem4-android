@@ -1,5 +1,6 @@
 package io.github.kichikuou.xsystem4
 
+import android.app.AlertDialog
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
@@ -10,7 +11,12 @@ import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.Toast
 import org.libsdl.app.SDLActivity
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 // Intent for this activity must have the following extras:
 // - EXTRA_GAME_ROOT (string): A path to the game installation.
@@ -23,11 +29,13 @@ class XSystem4Activity : SDLActivity() {
 
         private const val ACTION_OPEN_SAVE = 1
         private const val ACTION_OPEN_LOAD = 2
+        private const val ACTION_RIGHT_CLICK = 3
+        private const val SLOT_COUNT = 12
     }
 
     private var lastGameActionAt = 0L
 
-    private external fun nativeQueueGameAction(action: Int)
+    private external fun nativeQueueGameAction(action: Int, slot: Int)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -38,6 +46,13 @@ class XSystem4Activity : SDLActivity() {
 
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
 
+    private fun saveDir(): File =
+        File(intent.getStringExtra(EXTRA_SAVE_DIR) ?: filesDir.absolutePath)
+
+    // Direct VM snapshots are not interchangeable with native game saves, so
+    // they live under their own names and never appear in the game's load UI.
+    private fun slotFile(slot: Int) = File(saveDir(), "Quick${'A' + slot}.asd")
+
     private fun setupSaveLoadOverlay() {
         val root = findViewById<ViewGroup>(android.R.id.content) ?: return
 
@@ -45,9 +60,9 @@ class XSystem4Activity : SDLActivity() {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
         }
-        panel.addView(createActionButton("存档") { triggerGameAction(ACTION_OPEN_SAVE) })
-        panel.addView(createActionButton("读档") { triggerGameAction(ACTION_OPEN_LOAD) },
-            LinearLayout.LayoutParams(dp(62), dp(36)).apply { topMargin = dp(8) })
+        panel.addView(createActionButton("存档") { showSlotPicker(save = true) })
+        panel.addView(createActionButton("读档") { showSlotPicker(save = false) })
+        panel.addView(createActionButton("返回") { triggerGameAction(ACTION_RIGHT_CLICK, 0) })
 
         val lp = FrameLayout.LayoutParams(
             dp(62), FrameLayout.LayoutParams.WRAP_CONTENT,
@@ -72,12 +87,56 @@ class XSystem4Activity : SDLActivity() {
         }
     }
 
-    private fun triggerGameAction(action: Int) {
+    private fun slotLabel(slot: Int): String {
+        val name = "${'A' + slot} 槽"
+        val file = slotFile(slot)
+        if (!file.exists())
+            return "$name    空"
+        val date = SimpleDateFormat("MM-dd HH:mm", Locale.getDefault()).format(Date(file.lastModified()))
+        return "$name    $date"
+    }
+
+    private fun showSlotPicker(save: Boolean) {
+        val labels = Array(SLOT_COUNT) { slotLabel(it) }
+        AlertDialog.Builder(this)
+            .setTitle(if (save) "存档到" else "读取存档")
+            .setItems(labels) { _, slot ->
+                if (save) {
+                    if (slotFile(slot).exists()) {
+                        AlertDialog.Builder(this)
+                            .setMessage("覆盖 ${'A' + slot} 槽的存档？")
+                            .setPositiveButton("覆盖") { _, _ -> commitSlot(save = true, slot) }
+                            .setNegativeButton("取消", null)
+                            .show()
+                    } else {
+                        commitSlot(save = true, slot)
+                    }
+                } else {
+                    if (slotFile(slot).exists())
+                        commitSlot(save = false, slot)
+                    else
+                        Toast.makeText(this, "${'A' + slot} 槽是空的", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun commitSlot(save: Boolean, slot: Int) {
+        triggerGameAction(if (save) ACTION_OPEN_SAVE else ACTION_OPEN_LOAD, slot)
+        Toast.makeText(
+            this,
+            if (save) "已存档到 ${'A' + slot} 槽" else "正在读取 ${'A' + slot} 槽",
+            Toast.LENGTH_SHORT
+        ).show()
+    }
+
+    private fun triggerGameAction(action: Int, slot: Int) {
         val now = SystemClock.uptimeMillis()
         if (now - lastGameActionAt < 500)
             return
         lastGameActionAt = now
-        nativeQueueGameAction(action)
+        nativeQueueGameAction(action, slot)
     }
 
     override fun getLibraries(): Array<String> {

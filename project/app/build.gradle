@@ -15,13 +15,13 @@ android {
     compileSdkVersion 34
     defaultConfig {
         // 包名单独取，和 namespace 不同：数据目录 /sdcard/Android/data/<applicationId>/...
-        applicationId "com.sling0318.rance01"
+        applicationId "com.sling0318.rance06"
         minSdkVersion 21
         targetSdkVersion 34
         // So that stripReleaseDebugSymbols task works
         ndkPath System.getenv("ANDROID_NDK_HOME")
-        versionCode 2
-        versionName "1.0.7" + gitRevision()
+        versionCode 1
+        versionName "1.0.0" + gitRevision()
     }
     signingConfigs {
         release {
