@@ -17,6 +17,7 @@
 #define VM_PRIVATE
 
 #include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
 #include <math.h>
 #include <time.h>
@@ -35,7 +36,7 @@
 
 #include "debugger.h"
 #include "input.h"
-#include "scene.h"
+#include "sact.h"
 #include "savedata.h"
 #include "vm.h"
 #include "vm/heap.h"
@@ -1610,7 +1611,8 @@ static enum opcode execute_instruction(enum opcode opcode)
 		break;
 	}
 	case S_FIND: {
-		int i = string_find(stack_peek_string(1), stack_peek_string(0));
+		int i = config.gbk_text ? text_find(stack_peek_string(1), stack_peek_string(0))
+			: string_find(stack_peek_string(1), stack_peek_string(0));
 		heap_unref(stack_pop().i);
 		heap_unref(stack_pop().i);
 		stack_push(i);
@@ -1630,13 +1632,19 @@ static enum opcode execute_instruction(enum opcode opcode)
 	case S_PUSHBACK2: {
 		int c = stack_pop().i;
 		int str = stack_pop().i;
-		string_push_back(&heap[str].s, c);
+		if (config.gbk_text)
+			text_push_back(&heap[str].s, c);
+		else
+			string_push_back(&heap[str].s, c);
 		break;
 	}
 	//case S_POPBACK: // ???
 	case S_POPBACK2: {
 		int str = stack_pop().i;
-		string_pop_back(&heap[str].s);
+		if (config.gbk_text)
+			text_pop_back(&heap[str].s);
+		else
+			string_pop_back(&heap[str].s);
 		break;
 	}
 	//case S_ERASE: // ???
@@ -1644,7 +1652,10 @@ static enum opcode execute_instruction(enum opcode opcode)
 		stack_pop(); // ???
 		int i = stack_pop().i; // index
 		int str = stack_pop().i;
-		string_erase(&heap[str].s, i);
+		if (config.gbk_text)
+			text_erase(&heap[str].s, i);
+		else
+			string_erase(&heap[str].s, i);
 		break;
 	}
 	case S_MOD: {
@@ -1685,7 +1696,8 @@ static enum opcode execute_instruction(enum opcode opcode)
 	case C_REF: {
 		int i = stack_pop().i;
 		int str = stack_pop().i;
-		int32_t ch = string_get_char(heap_get_string(str), i);
+		int32_t ch = config.gbk_text ? text_get_char(heap_get_string(str), i)
+			: string_get_char(heap_get_string(str), i);
 		// 'é' for EN Rance Quest
 		if (game_rance8_mg && ch == -91)
 			stack_push(165);
@@ -1697,7 +1709,10 @@ static enum opcode execute_instruction(enum opcode opcode)
 		int c = stack_pop().i;
 		int i = stack_pop().i;
 		int str = stack_pop().i;
-		string_set_char(&heap[str].s, i, c);
+		if (config.gbk_text)
+			text_set_char(&heap[str].s, i, c);
+		else
+			string_set_char(&heap[str].s, i, c);
 		stack_push(c);
 		break;
 	}
@@ -2379,54 +2394,24 @@ static enum opcode execute_instruction(enum opcode opcode)
 }
 
 static SDL_atomic_t pending_game_action;
+static int pending_game_action_arg;
 static int execute_depth;
 
 void vm_queue_game_action(enum vm_game_action action)
 {
+	vm_queue_game_action_arg(action, 0);
+}
+
+void vm_queue_game_action_arg(enum vm_game_action action, int arg)
+{
+	pending_game_action_arg = arg;
 	SDL_AtomicSet(&pending_game_action, action);
 }
 
-static int game_action_function(enum vm_game_action action)
-{
-	const char *name;
-	switch (action) {
-	case VM_GAME_ACTION_OPEN_SAVE:
-		name = "OpenSave";
-		break;
-	case VM_GAME_ACTION_OPEN_LOAD:
-		name = "OpenLoad";
-		break;
-	default:
-		return -1;
-	}
-
-	char *sjis_name = utf2sjis(name, 0);
-	int fno = ain_get_function(ain, sjis_name);
-	free(sjis_name);
-	if (fno < 0 || fno >= ain->nr_functions) {
-		WARNING("Game action function not found: %s", name);
-		return -1;
-	}
-	if (ain->functions[fno].nr_args != 0) {
-		WARNING("Game action function takes arguments: %s", name);
-		return -1;
-	}
-	return fno;
-}
-
-// State for the code that runs after the native save/load scene returns.
-// function_call() only pushes a frame, so the post-processing cannot simply
-// follow it in C; remember the return address and run it at the next
-// instruction boundary that lands back in the caller.
-static bool native_ui_cleanup_pending;
-static size_t native_ui_cleanup_ip;
-static int32_t native_ui_cleanup_depth;
-
-void vm_cancel_native_ui_cleanup(void)
-{
-	native_ui_cleanup_pending = false;
-}
-
+// A VM snapshot can be resumed at any instruction boundary, so the game's own
+// save/load screens are never invoked from the overlay: Rance VI's screen
+// abandons the current call stack (SJUMP) and cannot be restored from a
+// dungeon or a battle.
 static void vm_execute_loop(void)
 {
 	for (;;) {
@@ -2437,42 +2422,40 @@ static void vm_execute_loop(void)
 		// (e.g. the Android overlay) and dispatch them at an instruction
 		// boundary of the outermost execution, like a script-level interrupt.
 		if (execute_depth == 1) {
-			// OpenSave/OpenLoad was scheduled below; once its call frame has
-			// returned we are back at the instruction that followed the
-			// injection point. Restore the game scene here, before that
-			// instruction runs.
-			if (native_ui_cleanup_pending &&
-			    call_stack_ptr == native_ui_cleanup_depth &&
-			    instr_ptr == native_ui_cleanup_ip) {
-				native_ui_cleanup_pending = false;
-				scene_set_wallpaper_visible(true);
-				scene_blackout_end();
-				continue;
-			}
 			int action = SDL_AtomicGet(&pending_game_action);
 			if (action != VM_GAME_ACTION_NONE) {
 				SDL_AtomicSet(&pending_game_action, VM_GAME_ACTION_NONE);
-				// Ignore further actions while the native save/load scene is
-				// open; injecting a load there would corrupt the scene.
-				if (native_ui_cleanup_pending)
+				// Right-click is a plain input event, so it is always safe
+				// to deliver.
+				if (action == VM_GAME_ACTION_RIGHT_CLICK) {
+					input_click_right();
 					continue;
-				int fno = game_action_function(action);
-				if (fno >= 0) {
-					// Cover the game scene while the native save/load scene is
-					// open. This is render-only: the black sprite sits below the
-					// save UI parts (z=1000) and the pre-existing sprites are
-					// skipped, so no game state is modified and no fade is
-					// needed.
-					bool native_ui = action == VM_GAME_ACTION_OPEN_SAVE ||
-							 action == VM_GAME_ACTION_OPEN_LOAD;
-					if (native_ui) {
-						scene_blackout_begin();
-						scene_set_wallpaper_visible(false);
-						native_ui_cleanup_pending = true;
-						native_ui_cleanup_depth = call_stack_ptr;
-						native_ui_cleanup_ip = instr_ptr;
+				}
+				if (action == VM_GAME_ACTION_OPEN_SAVE || action == VM_GAME_ACTION_OPEN_LOAD) {
+					int slot = pending_game_action_arg;
+					if (slot < 0 || slot >= 12) {
+						WARNING("Save/load slot out of range: %d", slot);
+						continue;
 					}
-					function_call(fno, instr_ptr);
+					char path[16];
+					char sprite_path[16];
+					snprintf(path, sizeof(path), "Quick%c.asd", 'A' + slot);
+					snprintf(sprite_path, sizeof(sprite_path), "Quick%c.sp2", 'A' + slot);
+					const char *key = "Rance6 SaveData 0001";
+					char *full = savedir_path(path);
+					char *sprite_full = savedir_path(sprite_path);
+					if (action == VM_GAME_ACTION_OPEN_SAVE) {
+						if (!vm_save_image_full(key, path))
+							WARNING("Failed to write VM snapshot '%s'", path);
+						else if (!sact_snapshot_save(sprite_full))
+							WARNING("Failed to write sprite snapshot '%s'", sprite_path);
+					} else if (file_exists(full)) {
+						vm_load_image(key, path);
+						if (file_exists(sprite_full) && !sact_snapshot_load(sprite_full))
+							WARNING("Failed to restore SACT snapshot for slot %c", 'A' + slot);
+					}
+					free(full);
+					free(sprite_full);
 				}
 				continue;
 			}

@@ -112,12 +112,13 @@ enum vm_game_action {
 	VM_GAME_ACTION_NONE = 0,
 	VM_GAME_ACTION_OPEN_SAVE,
 	VM_GAME_ACTION_OPEN_LOAD,
+	VM_GAME_ACTION_RIGHT_CLICK,
 };
 
 int vm_execute_ain(struct ain *program);
 void vm_call(int fno, int struct_page);
 void vm_queue_game_action(enum vm_game_action action);
-void vm_cancel_native_ui_cleanup(void);
+void vm_queue_game_action_arg(enum vm_game_action action, int arg);
 int vm_time(void);
 void vm_sleep(int ms);
 
@@ -188,6 +189,7 @@ uint32_t get_switch_address(int no, int val);
 uint32_t get_strswitch_address(int no, struct string *str);
 
 int vm_save_image(const char *key, const char *path);
+int vm_save_image_full(const char *key, const char *path);
 void vm_load_image(const char *key, const char *path);
 struct page *vm_load_image_comments(const char *key, const char *path, int *success);
 int vm_write_image_comments(const char *key, const char *path, struct page *comments);

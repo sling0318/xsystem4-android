@@ -331,11 +331,14 @@ static void save_call_stack_to_rsave(struct rsave *rs)
 	rs->ip.local_addr = instr_ptr - prev_func->address + 6;
 }
 
-static void save_stack_to_rsave(struct rsave *rs)
+static void save_stack_to_rsave(struct rsave *rs, bool full_stack)
 {
-	// For compatibility with the AliceSoft's implementation, exclude two values
-	// (the SYS_RESUME_SAVE arguments) at the top of the stack.
-	rs->stack_size = stack_ptr - 2;
+	// Game saves are made inside SYS_RESUME_SAVE; for compatibility with the
+	// AliceSoft implementation, exclude its two arguments at the top of the
+	// stack. A direct VM snapshot is taken outside that syscall, so it must
+	// save the whole value stack.
+	int size = full_stack ? stack_ptr : stack_ptr - 2;
+	rs->stack_size = size > 0 ? size : 0;
 
 	rs->stack = xcalloc(rs->stack_size, sizeof(int32_t));
 	for (int i = 0; i < rs->stack_size; i++) {
@@ -366,20 +369,20 @@ static struct rsave *make_rsave(const char *key)
 	return save;
 }
 
-static struct rsave *vm_image_to_rsave(const char *key)
+static struct rsave *vm_image_to_rsave(const char *key, bool full_stack)
 {
 	struct rsave *save = make_rsave(key);
 	save->next_seq = heap_next_seq;
 	save_heap_to_rsave(save);
 	save_call_stack_to_rsave(save);
-	save_stack_to_rsave(save);
+	save_stack_to_rsave(save, full_stack);
 	save_func_names_to_rsave(save);
 	return save;
 }
 
-static int save_rsave_image(const char *key, const char *path)
+static int save_rsave_image(const char *key, const char *path, bool full_stack)
 {
-	struct rsave *save = vm_image_to_rsave(key);
+	struct rsave *save = vm_image_to_rsave(key, full_stack);
 	if (!save)
 		return 0;
 	char *full_path = savedir_path(path);
@@ -414,7 +417,18 @@ int vm_save_image(const char *key, const char *path)
 {
 	switch (config.save_format) {
 	case SAVE_FORMAT_RSM:
-		return save_rsave_image(key, path);
+		return save_rsave_image(key, path, false);
+	case SAVE_FORMAT_JSON:
+		return save_json_image(key, path);
+	}
+	return 0;
+}
+
+int vm_save_image_full(const char *key, const char *path)
+{
+	switch (config.save_format) {
+	case SAVE_FORMAT_RSM:
+		return save_rsave_image(key, path, true);
 	case SAVE_FORMAT_JSON:
 		return save_json_image(key, path);
 	}
@@ -858,14 +872,12 @@ void vm_load_image(const char *key, const char *path)
 	enum savefile_error error = load_rsave_image(key, path);
 	switch (error) {
 	case SAVEFILE_SUCCESS:
-		vm_cancel_native_ui_cleanup();
 		scene_blackout_end();
 		scene_set_wallpaper_visible(true);
 		return;
 	case SAVEFILE_INVALID_SIGNATURE:
 		// If not a System4 resume save file, read as a json.
 		load_json_image(key, path);
-		vm_cancel_native_ui_cleanup();
 		scene_blackout_end();
 		scene_set_wallpaper_visible(true);
 		return;
