@@ -139,6 +139,8 @@ extern bool keyboard_focus;
 
 void handle_window_events(void);
 void handle_events(void);
+/* Synthesize a short right-click for the Android overlay's back button. */
+void input_click_right(void);
 bool key_is_down(enum sact_keycode code);
 void key_clear_flag(bool no_ctrl);
 bool joy_key_is_down(uint8_t code);

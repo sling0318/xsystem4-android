@@ -32,6 +32,13 @@
 #endif
 
 bool key_state[VK_NR_KEYCODES];
+static uint32_t right_click_release_at;
+
+void input_click_right(void)
+{
+	key_state[VK_RBUTTON] = true;
+	right_click_release_at = SDL_GetTicks() + 120;
+}
 static enum sact_keycode sdl_keytable[] = {
 	[SDL_SCANCODE_0] = VK_0,
 	[SDL_SCANCODE_1] = VK_1,
@@ -635,6 +642,11 @@ void handle_window_events(void)
 void handle_events(void)
 {
 	fire_deferred_events();
+
+	if (right_click_release_at && SDL_GetTicks() >= right_click_release_at) {
+		key_state[VK_RBUTTON] = false;
+		right_click_release_at = 0;
+	}
 
 	SDL_Event e;
 	while (SDL_PollEvent(&e)) {
