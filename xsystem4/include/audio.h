@@ -31,8 +31,7 @@ bool audio_play_sound(int sound_no);
 bool audio_play_archive_data(struct archive_data *dfile);
 
 bool wav_exists(int no);
-bool bgm_exists(int no);
-int wav_prepare(int id, int no);
+bool bgm_exists(int no);int wav_prepare(int id, int no);
 int bgm_prepare(int id, int no);
 int wav_unprepare(int id);
 int bgm_unprepare(int id);
@@ -92,5 +91,28 @@ int wav_get_group_num_from_data_num(int no);
 // Takes ownership of dfile.
 int wav_prepare_from_archive_data(int id, int metadata_no, struct archive_data *dfile);
 int bgm_prepare_from_archive_data(int id, int metadata_no, struct archive_data *dfile);
+
+// Prepared channels are engine-side, so a VM snapshot restored in another
+// process refers to channels that no longer exist. These record and rebuild
+// them.
+enum audio_pool {
+	AUDIO_BGM,
+	AUDIO_WAV,
+};
+
+struct audio_channel_state {
+	int id;
+	int no;
+	int volume;
+	bool playing;
+};
+
+int audio_nr_channels(enum audio_pool pool);
+// Returns the number of states written, or -1 when max is too small.
+int audio_get_channels(enum audio_pool pool, struct audio_channel_state *out, int max);
+// Makes the pool hold exactly the recorded channels, reusing the ones that
+// already carry the same data.
+bool audio_restore_channels(enum audio_pool pool, const struct audio_channel_state *want, int nr);
+void audio_forget_anonymous(void);
 
 #endif /* SYSTEM4_AUDIO_H */

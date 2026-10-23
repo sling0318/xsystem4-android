@@ -84,7 +84,11 @@ int channel_get_sample_length(struct channel *ch);
 int channel_seek(struct channel *ch, int pos);
 int channel_reverse_LR(struct channel *ch);
 int channel_get_volume(struct channel *ch);
+int channel_set_volume(struct channel *ch, int volume);
 int channel_get_time_length(struct channel *ch);
 int channel_get_data_no(struct channel *ch);
+// Number the channel was prepared with (BGM/SOUND asset), or -1 when the
+// channel was opened from a file or raw archive data.
+int channel_get_asset_no(struct channel *ch);
 
 #endif /* SYSTEM4_MIXER_H */

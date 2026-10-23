@@ -93,6 +93,8 @@ int sact_SP_GetAMapValue(int sp_no, int x, int y);
 int sact_SP_GetPixelValue(int sp_no, int x, int y, int *r, int *g, int *b);
 int sact_SP_SetBrightness(int sp_no, int brightness);
 int sact_SP_GetBrightness(int sp_no);
+bool sact_snapshot_save(const char *path);
+bool sact_snapshot_load(const char *path);
 int sact_GAME_MSG_GetNumOf(void);
 void sact_IntToZenkaku(struct string **s, int value, int figures, int zero_pad);
 void sact_IntToHankaku(struct string **s, int value, int figures, int zero_pad);

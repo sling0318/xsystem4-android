@@ -434,6 +434,12 @@ int channel_get_volume(struct channel *ch)
 	return ch->volume;
 }
 
+int channel_set_volume(struct channel *ch, int volume)
+{
+	ch->volume = max(0, min(100, volume));
+	return 1;
+}
+
 int channel_get_time_length(struct channel *ch)
 {
 	return muldiv(ch->info.frames, 1000, ch->info.samplerate);
@@ -442,6 +448,11 @@ int channel_get_time_length(struct channel *ch)
 int channel_get_data_no(struct channel *ch)
 {
 	return ch->dfile ? ch->dfile->no : -1;
+}
+
+int channel_get_asset_no(struct channel *ch)
+{
+	return ch->no;
 }
 
 static sf_count_t channel_vio_get_filelen(void *data)

@@ -434,3 +434,88 @@ int wav_get_group_num_from_data_num(int no)
 	struct wai *wai = wai_get(no);
 	return wai ? wai->channel : 0;
 }
+
+static struct id_pool *audio_pool(enum audio_pool pool)
+{
+	return pool == AUDIO_BGM ? &bgm : &wav;
+}
+
+int audio_nr_channels(enum audio_pool pool)
+{
+	return id_pool_count(audio_pool(pool));
+}
+
+int audio_get_channels(enum audio_pool pool, struct audio_channel_state *out, int max)
+{
+	struct id_pool *idp = audio_pool(pool);
+	int n = 0;
+	for (int id = id_pool_get_first(idp); id >= 0; id = id_pool_get_next(idp, id)) {
+		struct channel *ch = id_pool_get(idp, id);
+		if (!ch)
+			continue;
+		if (n >= max)
+			return -1;
+		out[n++] = (struct audio_channel_state){
+			.id = id,
+			.no = channel_get_asset_no(ch),
+			.volume = channel_get_volume(ch),
+			.playing = !!channel_is_playing(ch),
+		};
+	}
+	return n;
+}
+
+void audio_forget_anonymous(void)
+{
+	for (int i = 0; i < NR_ANONYMOUS_CHANNELS; i++)
+		anonymous_channels[i] = -1;
+}
+
+bool audio_restore_channels(enum audio_pool pool, const struct audio_channel_state *want, int nr)
+{
+	struct id_pool *idp = audio_pool(pool);
+	bool ok = true;
+
+	for (int id = id_pool_get_first(idp); id >= 0; id = id_pool_get_next(idp, id)) {
+		bool recorded = false;
+		for (int i = 0; i < nr; i++)
+			recorded = recorded || want[i].id == id;
+		if (recorded)
+			continue;
+		struct channel *ch = id_pool_release(idp, id);
+		if (ch)
+			channel_close(ch);
+	}
+
+	for (int i = 0; i < nr; i++) {
+		const struct audio_channel_state *st = &want[i];
+		struct channel *ch = id_pool_get(idp, st->id);
+		if (ch && (st->no < 0 || channel_get_asset_no(ch) != st->no)) {
+			id_pool_release(idp, st->id);
+			channel_close(ch);
+			ch = NULL;
+		}
+		if (!ch) {
+			if (st->no < 0)
+				// Channel opened from a file or raw archive data; only the
+				// process that prepared it can reopen it.
+				continue;
+			ch = channel_open(pool == AUDIO_BGM ? ASSET_BGM : ASSET_SOUND, st->no);
+			if (!ch) {
+				ok = false;
+				continue;
+			}
+			id_pool_set(idp, st->id, ch);
+		}
+		channel_set_volume(ch, st->volume);
+		if (st->playing) {
+			if (channel_is_paused(ch))
+				channel_restart(ch);
+			else if (!channel_is_playing(ch))
+				channel_play(ch);
+		} else if (channel_is_playing(ch)) {
+			channel_stop(ch);
+		}
+	}
+	return ok;
+}
