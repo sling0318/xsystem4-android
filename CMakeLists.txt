@@ -82,27 +82,40 @@ ExternalProject_Add(
 
 set(TARGET_CC "${CMAKE_ANDROID_NDK_TOOLCHAIN_UNIFIED}/bin/clang -target ${CMAKE_C_COMPILER_TARGET}")
 
-ExternalProject_Add(
-  libffi
-  URL https://github.com/libffi/libffi/releases/download/v3.4.6/libffi-3.4.6.tar.gz
-  URL_HASH SHA1=19251dfee520dff42acefe36bfe76d7168071e01
-  CONFIGURE_COMMAND <SOURCE_DIR>/configure
-    --host ${CMAKE_C_COMPILER_TARGET}
-    --prefix=${stagingDir}
-    --disable-shared
-    --disable-dependency-tracking
-    --disable-builddir
-    --disable-multi-os-directory
-    --disable-structs
-    --disable-raw-api
-    --disable-docs
-    AR=${CMAKE_AR}
-    CC=${TARGET_CC}
-    AS=${TARGET_CC}
-    LD=${CMAKE_ANDROID_NDK_TOOLCHAIN_UNIFIED}/bin/ld
-    RANLIB=${CMAKE_RANLIB}
-    STRIP=${CMAKE_STRIP}
-)
+if(CMAKE_HOST_WIN32)
+  # autotools configure cannot run under cmd.exe. Windows builds use a libffi
+  # manually installed into the staging prefix instead.
+  ExternalProject_Add(
+    libffi
+    URL https://github.com/libffi/libffi/releases/download/v3.4.6/libffi-3.4.6.tar.gz
+    URL_HASH SHA1=19251dfee520dff42acefe36bfe76d7168071e01
+    CONFIGURE_COMMAND ""
+    BUILD_COMMAND ""
+    INSTALL_COMMAND ""
+  )
+else()
+  ExternalProject_Add(
+    libffi
+    URL https://github.com/libffi/libffi/releases/download/v3.4.6/libffi-3.4.6.tar.gz
+    URL_HASH SHA1=19251dfee520dff42acefe36bfe76d7168071e01
+    CONFIGURE_COMMAND <SOURCE_DIR>/configure
+      --host ${CMAKE_C_COMPILER_TARGET}
+      --prefix=${stagingDir}
+      --disable-shared
+      --disable-dependency-tracking
+      --disable-builddir
+      --disable-multi-os-directory
+      --disable-structs
+      --disable-raw-api
+      --disable-docs
+      AR=${CMAKE_AR}
+      CC=${TARGET_CC}
+      AS=${TARGET_CC}
+      LD=${CMAKE_ANDROID_NDK_TOOLCHAIN_UNIFIED}/bin/ld
+      RANLIB=${CMAKE_RANLIB}
+      STRIP=${CMAKE_STRIP}
+  )
+endif()
 
 # This fork disables FLAC and Opus support.
 ExternalProject_Add(
