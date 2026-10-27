@@ -689,8 +689,11 @@ GLuint gfx_set_framebuffer(GLenum target, Texture *t, int x, int y, int w, int h
 	glFramebufferTexture2D(target, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, t->handle, 0);
 	glViewport(x, y, w, h);
 
-	if (glCheckFramebufferStatus(target) != GL_FRAMEBUFFER_COMPLETE)
-		ERROR("Incomplete framebuffer");
+	GLenum status = glCheckFramebufferStatus(target);
+	if (status != GL_FRAMEBUFFER_COMPLETE) {
+		WARNING("Incomplete framebuffer (0x%04x): texture %u, %dx%d",
+			status, t->handle, t->w, t->h);
+	}
 	return fbo;
 }
 

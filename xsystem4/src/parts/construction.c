@@ -332,12 +332,27 @@ bool PE_AddCopyTextToPartsConstructionProcess(int parts_no, int x, int y, struct
 			PARTS_CP_COPY_TEXT);
 }
 
+static bool cproc_texture_drawable(struct parts_construction_process *cproc)
+{
+	if (cproc->common.texture.handle && cproc->common.texture.w > 0 &&
+	    cproc->common.texture.h > 0)
+		return true;
+	WARNING("Parts construction texture is not drawable (handle %u, %dx%d)",
+		cproc->common.texture.handle, cproc->common.texture.w, cproc->common.texture.h);
+	return false;
+}
+
 static bool build_create(struct parts *parts, struct parts_construction_process *cproc,
 		struct parts_cp_create *op)
 {
 	gfx_delete_texture(&cproc->common.texture);
+	if (op->w <= 0 || op->h <= 0) {
+		WARNING("Invalid parts construction size %dx%d", op->w, op->h);
+		parts_set_dims(parts, &cproc->common, 0, 0);
+		return false;
+	}
 	gfx_init_texture_rgba(&cproc->common.texture, op->w, op->h, (SDL_Color){0,0,0,255});
-	if (!cproc->common.texture.handle)
+	if (!cproc_texture_drawable(cproc))
 		return false;
 	parts_set_dims(parts, &cproc->common, op->w, op->h);
 	return true;
@@ -347,8 +362,13 @@ static bool build_create_pixel_only(struct parts *parts, struct parts_constructi
 		struct parts_cp_create *op)
 {
 	gfx_delete_texture(&cproc->common.texture);
+	if (op->w <= 0 || op->h <= 0) {
+		WARNING("Invalid parts construction size %dx%d", op->w, op->h);
+		parts_set_dims(parts, &cproc->common, 0, 0);
+		return false;
+	}
 	gfx_init_texture_rgb(&cproc->common.texture, op->w, op->h, (SDL_Color){0,0,0,255});
-	if (!cproc->common.texture.handle)
+	if (!cproc_texture_drawable(cproc))
 		return false;
 	parts_set_dims(parts, &cproc->common, op->w, op->h);
 	return true;
@@ -368,7 +388,7 @@ static bool build_cg(struct parts *parts, struct parts_construction_process *cpr
 
 static bool build_fill(struct parts_construction_process *cproc, struct parts_cp_fill *op)
 {
-	if (!cproc->common.texture.handle)
+	if (!cproc_texture_drawable(cproc))
 		return false;
 	gfx_fill(&cproc->common.texture, op->x, op->y, op->w, op->h, op->r, op->g, op->b);
 	return true;
@@ -376,7 +396,7 @@ static bool build_fill(struct parts_construction_process *cproc, struct parts_cp
 
 static bool build_fill_alpha_color(struct parts_construction_process *cproc, struct parts_cp_fill *op)
 {
-	if (!cproc->common.texture.handle)
+	if (!cproc_texture_drawable(cproc))
 		return false;
 	gfx_fill_alpha_color(&cproc->common.texture, op->x, op->y, op->w, op->h, op->r, op->g, op->b, op->a);
 	return true;
@@ -384,7 +404,7 @@ static bool build_fill_alpha_color(struct parts_construction_process *cproc, str
 
 static bool build_fill_amap(struct parts_construction_process *cproc, struct parts_cp_fill *op)
 {
-	if (!cproc->common.texture.handle)
+	if (!cproc_texture_drawable(cproc))
 		return false;
 	gfx_fill_amap(&cproc->common.texture, op->x, op->y, op->w, op->h, op->a);
 	return true;
@@ -392,7 +412,7 @@ static bool build_fill_amap(struct parts_construction_process *cproc, struct par
 
 static bool build_fill_with_alpha(struct parts_construction_process *cproc, struct parts_cp_fill *op)
 {
-	if (!cproc->common.texture.handle)
+	if (!cproc_texture_drawable(cproc))
 		return false;
 	gfx_fill_with_alpha(&cproc->common.texture, op->x, op->y, op->w, op->h, op->r, op->g, op->b, op->a);
 	return true;
@@ -400,7 +420,7 @@ static bool build_fill_with_alpha(struct parts_construction_process *cproc, stru
 
 static bool build_draw_rect(struct parts_construction_process *cproc, struct parts_cp_fill *op)
 {
-	if (!cproc->common.texture.handle)
+	if (!cproc_texture_drawable(cproc))
 		return false;
 	int x2 = op->x + op->w - 1;
 	int y2 = op->y + op->h - 1;
@@ -413,7 +433,7 @@ static bool build_draw_rect(struct parts_construction_process *cproc, struct par
 
 static bool build_draw_cut_cg(struct parts_construction_process *cproc, struct parts_cp_cut_cg *op)
 {
-	if (!cproc->common.texture.handle)
+	if (!cproc_texture_drawable(cproc))
 		return false;
 
 	struct cg *cg = asset_cg_load_by_name(op->cg_name->text, NULL);
@@ -431,7 +451,7 @@ static bool build_draw_cut_cg(struct parts_construction_process *cproc, struct p
 
 static bool build_copy_cut_cg(struct parts_construction_process *cproc, struct parts_cp_cut_cg *op)
 {
-	if (!cproc->common.texture.handle)
+	if (!cproc_texture_drawable(cproc))
 		return false;
 
 	struct cg *cg = asset_cg_load_by_name(op->cg_name->text, NULL);
@@ -449,7 +469,7 @@ static bool build_copy_cut_cg(struct parts_construction_process *cproc, struct p
 
 static bool build_draw_text(struct parts_construction_process *cproc, struct parts_cp_text *op)
 {
-	if (!cproc->common.texture.handle)
+	if (!cproc_texture_drawable(cproc))
 		return false;
 	gfx_render_text(&cproc->common.texture, op->x, op->y, op->text->text, &op->style, true);
 	return true;
@@ -457,7 +477,7 @@ static bool build_draw_text(struct parts_construction_process *cproc, struct par
 
 static bool build_copy_text(struct parts_construction_process *cproc, struct parts_cp_text *op)
 {
-	if (!cproc->common.texture.handle)
+	if (!cproc_texture_drawable(cproc))
 		return false;
 	int w = ceilf(gfx_size_text (&op->style, op->text->text));
 	int h = ceilf(op->style.size + op->style.edge_up + op->style.edge_down);
@@ -469,7 +489,7 @@ static bool build_copy_text(struct parts_construction_process *cproc, struct par
 
 static bool build_gray_filter(struct parts_construction_process *cproc, struct parts_cp_filter *op)
 {
-	if (!cproc->common.texture.handle)
+	if (!cproc_texture_drawable(cproc))
 		return false;
 	int x = op->x, y = op->y, w = op->w, h = op->h;
 	if (op->full_size) {
