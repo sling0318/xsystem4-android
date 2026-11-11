@@ -2386,6 +2386,21 @@ void vm_queue_game_action(enum vm_game_action action)
 	SDL_AtomicSet(&pending_game_action, action);
 }
 
+static SDL_mutex *vm_state_mutex;
+
+void vm_state_lock(void)
+{
+	if (unlikely(!vm_state_mutex))
+		vm_state_mutex = SDL_CreateMutex();
+	SDL_LockMutex(vm_state_mutex);
+}
+
+void vm_state_unlock(void)
+{
+	SDL_UnlockMutex(vm_state_mutex);
+}
+
+
 static int game_action_function(enum vm_game_action action)
 {
 	const char *name;

@@ -536,6 +536,9 @@ static void alloc_heap_slot(int slot)
 
 static void load_json_heap(cJSON *json)
 {
+	// The heap is about to be wholesale-replaced; keep the cheat overlay
+	// (UI thread) from walking it mid-teardown.
+	vm_state_lock();
 	delete_heap();
 
 	cJSON *item;
@@ -566,6 +569,7 @@ static void load_json_heap(cJSON *json)
 			invalid_save_data("Invalid heap data");
 		}
 	}
+	vm_state_unlock();
 }
 
 static int resolve_func_symbol(struct rsave_symbol *sym)
@@ -700,6 +704,8 @@ static void load_rsave_delegate(int slot, struct rsave_heap_delegate *d)
 
 static void load_rsave_heap(struct rsave *save)
 {
+	// Same as load_json_heap: serialize against the cheat overlay.
+	vm_state_lock();
 	delete_heap();
 
 	for (int slot = 0; slot < save->nr_heap_objs; slot++) {
@@ -715,6 +721,7 @@ static void load_rsave_heap(struct rsave *save)
 		}
 	}
 	heap_next_seq = save->next_seq;
+	vm_state_unlock();
 }
 
 static void load_json_call_stack(cJSON *json)

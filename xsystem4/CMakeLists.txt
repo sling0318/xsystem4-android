@@ -50,6 +50,7 @@ target_sources(xsystem4 PRIVATE
   src/asset_manager.c
   src/base64.c
   src/cJSON.c
+  src/cheat.c
   src/draw.c
   src/effect.c
   src/ffi.c

@@ -108,6 +108,13 @@ int vm_string_ref(struct string *s);
 int vm_copy_page(struct page *page);
 union vm_value vm_copy(union vm_value v, enum ain_data_type type);
 
+// Serializes external (UI thread) access to VM state — the heap and global
+// variables — against the bulk heap replacement performed on save load.
+// Only the cheat overlay accessors and the load paths take this; the VM's
+// per-instruction heap operations stay lock-free.
+void vm_state_lock(void);
+void vm_state_unlock(void);
+
 enum vm_game_action {
 	VM_GAME_ACTION_NONE = 0,
 	VM_GAME_ACTION_OPEN_SAVE,
