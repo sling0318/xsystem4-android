@@ -14,7 +14,14 @@ jobs:
         submodules: recursive
 
     - name: Install Deps
-      run: sudo apt install ninja-build
+      run: |
+        # ubuntu-latest images ship ninja-build; only install when missing.
+        # apt has been flaky (mirror DNS outages), so fall back to pip.
+        if ! command -v ninja >/dev/null 2>&1; then
+          sudo apt-get update || true
+          sudo apt-get install -y ninja-build || pip install --user ninja || true
+        fi
+        ninja --version
 
     - name: Native Build
       run: ANDROID_NDK_HOME=$ANDROID_NDK_LATEST_HOME ./build-shared-libs.sh
