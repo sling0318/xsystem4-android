@@ -110,8 +110,12 @@ static bool cheat_resolve_entry(const struct cheat_def *def, struct cheat_entry 
 	char *sjis_name = utf2sjis(name, 0);
 	e->global_index = ain_get_global(ain, sjis_name);
 	free(sjis_name);
-	if (e->global_index < 0 || e->global_index >= ain->nr_globals)
+	if (e->global_index < 0 || e->global_index >= ain->nr_globals) {
+		WARNING("cheat: global '%s' not found in %d globals (first: %s)",
+				name, ain->nr_globals,
+				ain->nr_globals > 0 ? ain->globals[0].name : "(none)");
 		return false;
+	}
 
 	struct ain_type type = ain->globals[e->global_index].type;
 	int ops_cap = 0;
@@ -126,13 +130,18 @@ static bool cheat_resolve_entry(const struct cheat_def *def, struct cheat_entry 
 				return false;
 			memcpy(name, ms, mlen);
 			name[mlen] = '\0';
-			if (type.data != AIN_STRUCT || type.rank != 0)
+			if (type.data != AIN_STRUCT || type.rank != 0) {
+				WARNING("cheat: '%s' member %s: not a struct (type %d)",
+						def->path, name, type.data);
 				return false;
+			}
 			char *sjis_member = utf2sjis(name, 0);
 			int mi = cheat_member_index(type.struc, sjis_member);
 			free(sjis_member);
-			if (mi < 0)
+			if (mi < 0) {
+				WARNING("cheat: member '%s' not found in struct %d", name, type.struc);
 				return false;
+			}
 			type = ain->structures[type.struc].members[mi].type;
 			if (e->nr_ops >= ops_cap) {
 				ops_cap = ops_cap ? ops_cap * 2 : 4;
@@ -178,23 +187,21 @@ static bool cheat_resolve_entry(const struct cheat_def *def, struct cheat_entry 
 
 void cheat_init(void)
 {
-	if (nr_resolved >= 0)
+	// Retry until the game program is loaded: callers may fire before the
+	// VM thread has run vm_execute_ain.
+	if (nr_resolved >= 0 || !ain)
 		return;
-	// entries[i] corresponds to cheat_defs[i]; unresolved entries keep
-	// global_index == -1 and fail fast on access.
+	NOTICE("cheat: resolving %d paths (ain has %d globals)",
+			(int)NR_CHEAT_DEFS, ain->nr_globals);
 	nr_resolved = 0;
 	for (size_t i = 0; i < NR_CHEAT_DEFS; i++) {
-		if (cheat_resolve_entry(&cheat_defs[i], &entries[i]))
+		if (cheat_resolve_entry(&cheat_defs[i], &entries[i])) {
 			nr_resolved++;
-	}
-	if (nr_resolved == 0)
-		return;  // not a game we have cheat paths for
-	if (nr_resolved < (int)NR_CHEAT_DEFS) {
-		for (size_t i = 0; i < NR_CHEAT_DEFS; i++) {
-			if (entries[i].global_index < 0)
-				WARNING("Cheat path unresolved: %s (%s)", cheat_defs[i].path, cheat_defs[i].label);
+		} else {
+			WARNING("cheat: path unresolved: %s (%s)", cheat_defs[i].path, cheat_defs[i].label);
 		}
 	}
+	NOTICE("cheat: %d/%d resolved", nr_resolved, (int)NR_CHEAT_DEFS);
 }
 
 int cheat_entry_count(void)
