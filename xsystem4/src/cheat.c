@@ -119,6 +119,7 @@ static bool cheat_resolve_entry(const struct cheat_def *def, struct cheat_entry 
 
 	struct ain_type type = ain->globals[e->global_index].type;
 	int ops_cap = 0;
+	p = end;  // skip the global variable name already consumed
 	while (*p) {
 		if (*p == '.') {
 			p++;

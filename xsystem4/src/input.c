@@ -284,6 +284,9 @@ static void mouse_event(SDL_MouseButtonEvent *e)
 
 static void synthetic_mouse_event(SDL_MouseButtonEvent *e)
 {
+	NOTICE("synthetic_mouse_event: button=%d state=%d at %d,%d (viewport %d,%d %dx%d)",
+			e->button, e->state, e->x, e->y,
+			sdl.viewport.x, sdl.viewport.y, sdl.viewport.w, sdl.viewport.h);
 	if (e->state == SDL_PRESSED) {
 		// A 4:3 game on a wide phone screen leaves letterbox bars that are easy to
 		// hit by accident; upstream turns those into right-clicks, which silently
