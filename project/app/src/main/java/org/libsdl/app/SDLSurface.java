@@ -204,10 +204,6 @@ public class SDLSurface extends SurfaceView implements SurfaceHolder.Callback,
         int i = -1;
         float x,y,p;
 
-        android.util.Log.d("SDL/TOUCH", "onTouch action=" + action + " src=0x"
-                + Integer.toHexString(event.getSource()) + " ptr=" + pointerCount
-                + " x=" + event.getX() + " y=" + event.getY() + " surface=" + mWidth + "x" + mHeight);
-
         /*
          * Prevent id to be -1, since it's used in SDL internal for synthetic events
          * Appears when using Android emulator, eg:

@@ -344,13 +344,6 @@ void gfx_update_screen_scale(void)
 	int display_w, display_h;
 	SDL_GL_GetDrawableSize(sdl.window, &display_w, &display_h);
 
-	{
-		int ww, wh;
-		SDL_GetWindowSize(sdl.window, &ww, &wh);
-		NOTICE("gfx_update_screen_scale: window=%dx%d drawable=%dx%d game=%dx%d",
-				ww, wh, display_w, display_h, sdl.w, sdl.h);
-	}
-
 	if (display_w * sdl.h == display_h * sdl.w) {
 		// The aspect ratios are the same, just scale appropriately.
 		sdl.viewport.x = 0;

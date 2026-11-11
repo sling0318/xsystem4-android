@@ -20,8 +20,8 @@ android {
         targetSdkVersion 34
         // So that stripReleaseDebugSymbols task works
         ndkPath System.getenv("ANDROID_NDK_HOME")
-        versionCode 2
-        versionName "1.0.7" + gitRevision()
+        versionCode 3
+        versionName "1.0.8" + gitRevision()
     }
     signingConfigs {
         release {
